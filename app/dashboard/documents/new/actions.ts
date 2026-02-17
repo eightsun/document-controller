@@ -399,7 +399,7 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
         description: data.description?.trim() || null,
         document_type_id: data.document_type_id,
         department_id: data.department_id,
-        sharepoint_draft_url: data.sharepoint_link.trim(),
+        draft_link: data.sharepoint_link.trim(),
         status: 'Initiation',
         version: '1.0',
         target_approval_date: data.target_approval_date,
@@ -435,9 +435,9 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
     const assignments: Array<{
       document_id: string
       user_id: string
-      role: string
+      role_type: string
+      sequence_order: number
       assigned_by: string
-      is_primary: boolean
     }> = []
     
     // Add MQS Reps (submitters) - default to current user if none selected
@@ -446,9 +446,9 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       assignments.push({
         document_id: documentId,
         user_id: id,
-        role: 'Submitter',
+        role_type: 'Submitter',
+        sequence_order: index + 1,
         assigned_by: userId,
-        is_primary: index === 0,
       })
     })
     
@@ -457,9 +457,9 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       assignments.push({
         document_id: documentId,
         user_id: id,
-        role: 'SME',
+        role_type: 'SME',
+        sequence_order: index + 1,
         assigned_by: userId,
-        is_primary: index === 0,
       })
     })
     
@@ -468,9 +468,9 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       assignments.push({
         document_id: documentId,
         user_id: id,
-        role: 'BPM',
+        role_type: 'BPM',
+        sequence_order: index + 1,
         assigned_by: userId,
-        is_primary: index === 0,
       })
     })
     
@@ -479,9 +479,9 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       assignments.push({
         document_id: documentId,
         user_id: id,
-        role: 'Approver',
+        role_type: 'Approver',
+        sequence_order: index + 1,
         assigned_by: userId,
-        is_primary: index === 0,
       })
     })
     
