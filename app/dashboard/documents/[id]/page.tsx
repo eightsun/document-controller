@@ -133,6 +133,9 @@ async function getDocumentWithDetails(id: string) {
       document_type_code: document.document_type_code as string | null,
       department_name: document.department_name as string | null,
       created_by_name: document.created_by_name as string | null,
+      // NEW FIELDS
+      published_at: document.published_at as string | null,
+      expiry_date: document.expiry_date as string | null,
     },
     assignments,
     affectedDepartments,
