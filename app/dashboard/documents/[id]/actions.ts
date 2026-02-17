@@ -2,7 +2,13 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { ActionResponse } from '@/types/database'
+
+interface ActionResponse<T = unknown> {
+  success: boolean
+  error?: string
+  message?: string
+  data?: T
+}
 
 const COMPANY_CODE = 'MRT'
 
@@ -188,7 +194,7 @@ export async function approveDocument(documentId: string, assignmentId: string, 
         status: 'Approved', 
         approved_at: publishedAt.toISOString(),
         published_at: publishedAt.toISOString(),
-        expiry_date: expiryDate.toISOString().split('T')[0], // Store as date only
+        expiry_date: expiryDate.toISOString().split('T')[0],
         updated_at: publishedAt.toISOString() 
       }).eq('id', documentId)
       
@@ -196,7 +202,7 @@ export async function approveDocument(documentId: string, assignmentId: string, 
         document_id: documentId,
         event_type: 'approved',
         event_title: 'Document Approved & Published',
-        event_description: `All approvers have approved. Document expires on ${expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.`,
+        event_description: `All approvers have approved. Document published and will expire on ${expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.`,
         performed_by: user.id,
       })
     }
@@ -254,10 +260,6 @@ export async function addComment(documentId: string, content: string): Promise<A
   }
 }
 
-// ============================================================================
-// EDIT DOCUMENT
-// ============================================================================
-
 export interface UpdateDocumentData {
   title?: string
   description?: string
@@ -278,97 +280,57 @@ export async function updateDocument(documentId: string, data: UpdateDocumentDat
 
     const supabase = await createClient()
     
-    // Get current document to find submitter
     const { data: currentDoc } = await supabase.from('documents').select('created_by').eq('id', documentId).single()
     
-    // Update document fields
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (data.title) updateData.title = data.title.trim()
     if (data.description !== undefined) updateData.description = data.description?.trim() || null
     if (data.document_type_id) updateData.document_type_id = data.document_type_id
     if (data.department_id) updateData.department_id = data.department_id
-    if (data.draft_link) updateData.draft_link = data.draft_link.trim()
+    if (data.draft_link !== undefined) updateData.draft_link = data.draft_link?.trim() || null
     if (data.target_approval_date) updateData.target_approval_date = data.target_approval_date
     
     const { error: updateError } = await supabase.from('documents').update(updateData).eq('id', documentId)
     if (updateError) return { success: false, error: `Update failed: ${updateError.message}` }
     
-    // Update affected departments if provided
     if (data.affected_department_ids !== undefined) {
       await supabase.from('affected_departments').delete().eq('document_id', documentId)
       if (data.affected_department_ids.length > 0) {
         const affectedDeptInserts = data.affected_department_ids.map(deptId => ({ document_id: documentId, department_id: deptId }))
-        const { error: affectedError } = await supabase.from('affected_departments').insert(affectedDeptInserts)
-        if (affectedError) console.error('Affected dept error:', affectedError)
+        await supabase.from('affected_departments').insert(affectedDeptInserts)
       }
     }
     
-    // Update assignments if provided
     if (data.reviewer_ids !== undefined || data.approver_ids !== undefined) {
-      // Delete existing assignments
-      const { error: deleteError } = await supabase.from('document_assignments').delete().eq('document_id', documentId)
-      if (deleteError) {
-        console.error('Delete assignments error:', deleteError)
-        return { success: false, error: `Failed to clear assignments: ${deleteError.message}` }
-      }
+      await supabase.from('document_assignments').delete().eq('document_id', documentId)
       
       const assignments: Array<{ document_id: string; user_id: string; role_type: string; sequence_order: number; assigned_by: string }> = []
       
-      // Add submitter (document creator)
       if (currentDoc?.created_by) {
-        assignments.push({ 
-          document_id: documentId, 
-          user_id: currentDoc.created_by, 
-          role_type: 'submitter', 
-          sequence_order: 1, 
-          assigned_by: user.id 
-        })
+        assignments.push({ document_id: documentId, user_id: currentDoc.created_by, role_type: 'submitter', sequence_order: 1, assigned_by: user.id })
       }
       
-      // Add reviewers
       if (data.reviewer_ids && data.reviewer_ids.length > 0) {
         data.reviewer_ids.forEach((id, index) => {
-          assignments.push({ 
-            document_id: documentId, 
-            user_id: id, 
-            role_type: 'reviewer', 
-            sequence_order: index + 1, 
-            assigned_by: user.id 
-          })
+          assignments.push({ document_id: documentId, user_id: id, role_type: 'reviewer', sequence_order: index + 1, assigned_by: user.id })
         })
       }
       
-      // Add approvers
       if (data.approver_ids && data.approver_ids.length > 0) {
         data.approver_ids.forEach((id, index) => {
-          assignments.push({ 
-            document_id: documentId, 
-            user_id: id, 
-            role_type: 'approver', 
-            sequence_order: index + 1, 
-            assigned_by: user.id 
-          })
+          assignments.push({ document_id: documentId, user_id: id, role_type: 'approver', sequence_order: index + 1, assigned_by: user.id })
         })
       }
       
-      console.log('Inserting assignments:', JSON.stringify(assignments, null, 2))
-      
       if (assignments.length > 0) {
-        const { data: insertedData, error: assignError } = await supabase
-          .from('document_assignments')
-          .insert(assignments)
-          .select()
-        
+        const { error: assignError } = await supabase.from('document_assignments').insert(assignments)
         if (assignError) {
-          console.error('Insert assignments error:', assignError)
+          console.error('Error inserting assignments:', assignError)
           return { success: false, error: `Failed to save assignments: ${assignError.message}` }
         }
-        
-        console.log('Inserted assignments:', insertedData)
       }
     }
     
-    // Add timeline entry
     await supabase.from('document_timeline').insert({
       document_id: documentId,
       event_type: 'edited',
@@ -382,7 +344,7 @@ export async function updateDocument(documentId: string, data: UpdateDocumentDat
     return { success: true, message: 'Document updated successfully' }
   } catch (error) {
     console.error('Error updating document:', error)
-    return { success: false, error: `Unexpected error: ${error}` }
+    return { success: false, error: 'An unexpected error occurred' }
   }
 }
 
