@@ -63,7 +63,7 @@ async function notifyUsers(
   title: string,
   message: string
 ) {
-  const uniqueIds = [...new Set(userIds)]
+  const uniqueIds = Array.from(new Set(userIds))
   for (const userId of uniqueIds) {
     await createNotification(userId, documentId, type, title, message)
   }
