@@ -18,8 +18,6 @@ import {
   Loader2,
   MessageSquare,
   Send,
-  Shield,
-  UserCheck,
   ClipboardCheck,
   Info
 } from 'lucide-react'
@@ -141,6 +139,69 @@ function RoleBadge({ role }: { role: string }) {
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colors[role] || 'bg-slate-100 text-slate-700'}`}>
       {role}
     </span>
+  )
+}
+
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
+      <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-auto">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function AssignmentRow({ assignment, disabled }: { assignment: Assignment; disabled?: boolean }) {
+  const formatDateTime = (dateString: string | null) => {
+    if (!dateString) return null
+    return new Date(dateString).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  return (
+    <div className={`flex items-center justify-between p-3 rounded-lg border ${
+      disabled ? 'bg-slate-50 border-slate-200 opacity-60' :
+      assignment.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'
+    }`}>
+      <div className="flex items-center gap-3">
+        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
+          assignment.is_completed ? 'bg-emerald-500' : 'bg-slate-400'
+        }`}>
+          {assignment.is_completed ? (
+            <CheckCircle className="h-4 w-4" />
+          ) : (
+            (assignment.profiles?.full_name || assignment.profiles?.email || '?')[0].toUpperCase()
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-medium text-slate-800">
+            {assignment.profiles?.full_name || assignment.profiles?.email || 'Unknown'}
+          </p>
+          <div className="flex items-center gap-2">
+            <RoleBadge role={assignment.role_type} />
+            {assignment.is_completed && assignment.completed_at && (
+              <span className="text-xs text-emerald-600">
+                Completed {formatDateTime(assignment.completed_at)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {assignment.assignment_notes && (
+        <div className="max-w-xs">
+          <p className="text-xs text-slate-500 italic truncate" title={assignment.assignment_notes}>
+            &quot;{assignment.assignment_notes}&quot;
+          </p>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -339,6 +400,9 @@ export default function DocumentDetail({
     }
   }
 
+  // ============================================================================
+  // Render
+  // ============================================================================
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Alert Messages */}
@@ -896,73 +960,6 @@ export default function DocumentDetail({
           </div>
         </Modal>
       )}
-    </div>
-  )
-}
-
-// ============================================================================
-// Sub-Components
-// ============================================================================
-
-function AssignmentRow({ assignment, disabled }: { assignment: Assignment; disabled?: boolean }) {
-  const formatDateTime = (dateString: string | null) => {
-    if (!dateString) return null
-    return new Date(dateString).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
-  return (
-    <div className={`flex items-center justify-between p-3 rounded-lg border ${
-      disabled ? 'bg-slate-50 border-slate-200 opacity-60' :
-      assignment.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'
-    }`}>
-      <div className="flex items-center gap-3">
-        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
-          assignment.is_completed ? 'bg-emerald-500' : 'bg-slate-400'
-        }`}>
-          {assignment.is_completed ? (
-            <CheckCircle className="h-4 w-4" />
-          ) : (
-            (assignment.profiles?.full_name || assignment.profiles?.email || '?')[0].toUpperCase()
-          )}
-        </div>
-        <div>
-          <p className="text-sm font-medium text-slate-800">
-            {assignment.profiles?.full_name || assignment.profiles?.email || 'Unknown'}
-          </p>
-          <div className="flex items-center gap-2">
-            <RoleBadge role={assignment.role_type} />
-            {assignment.is_completed && assignment.completed_at && (
-              <span className="text-xs text-emerald-600">
-                Completed {formatDateTime(assignment.completed_at)}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-      
-      {assignment.assignment_notes && (
-        <div className="max-w-xs">
-          <p className="text-xs text-slate-500 italic truncate" title={assignment.assignment_notes}>
-            "{assignment.assignment_notes}"
-          </p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
-      <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-auto">
-        {children}
-      </div>
     </div>
   )
 }
