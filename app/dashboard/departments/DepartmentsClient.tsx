@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { 
   Plus, 
   Search, 
@@ -12,7 +13,8 @@ import {
   XCircle,
   AlertTriangle,
   RotateCcw,
-  Filter
+  Filter,
+  Loader2
 } from 'lucide-react'
 import DepartmentForm from '@/components/DepartmentForm'
 import { 
@@ -25,6 +27,161 @@ import type { Department, DepartmentFormData } from '@/types/database'
 
 interface DepartmentsClientProps {
   initialDepartments: Department[]
+}
+
+// Delete Confirmation Modal Component with Portal
+function DeleteConfirmModal({
+  department,
+  isLoading,
+  onConfirm,
+  onCancel,
+}: {
+  department: Department
+  isLoading: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [])
+
+  const modalContent = (
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 99999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* Backdrop */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(4px)',
+        }}
+        onClick={onCancel}
+      />
+
+      {/* Modal */}
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '400px',
+          backgroundColor: 'white',
+          borderRadius: '16px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          padding: '24px',
+        }}
+      >
+        {/* Icon and Title */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', marginBottom: '16px' }}>
+          <div
+            style={{
+              width: '48px',
+              height: '48px',
+              backgroundColor: '#fef2f2',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <AlertTriangle style={{ width: '24px', height: '24px', color: '#dc2626' }} />
+          </div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#1e293b' }}>
+              Delete Department
+            </h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#64748b' }}>
+              This action cannot be undone
+            </p>
+          </div>
+        </div>
+
+        {/* Message */}
+        <p style={{ margin: '0 0 24px 0', fontSize: '14px', color: '#475569', lineHeight: 1.5 }}>
+          Are you sure you want to delete <strong>{department.name}</strong>? This will remove the
+          department from the system.
+        </p>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
+          <button
+            onClick={onCancel}
+            disabled={isLoading}
+            style={{
+              padding: '10px 16px',
+              fontSize: '14px',
+              fontWeight: 500,
+              color: '#374151',
+              backgroundColor: 'white',
+              border: '1px solid #d1d5db',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              opacity: isLoading ? 0.5 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isLoading}
+            style={{
+              padding: '10px 16px',
+              fontSize: '14px',
+              fontWeight: 500,
+              color: 'white',
+              backgroundColor: '#dc2626',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              opacity: isLoading ? 0.5 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 style={{ width: '16px', height: '16px' }} />
+                Delete
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  if (!mounted) return null
+
+  return createPortal(modalContent, document.body)
 }
 
 export default function DepartmentsClient({ initialDepartments }: DepartmentsClientProps) {
@@ -42,13 +199,11 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
   // Filter and search departments
   const filteredDepartments = useMemo(() => {
     return departments.filter((dept) => {
-      // Search filter
       const matchesSearch = 
         dept.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         dept.code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         dept.description?.toLowerCase().includes(searchQuery.toLowerCase())
       
-      // Status filter
       const matchesStatus = 
         statusFilter === 'all' ||
         (statusFilter === 'active' && dept.is_active) ||
@@ -78,7 +233,6 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
 
     try {
       if (editingDepartment) {
-        // Update existing department
         const result = await updateDepartment(editingDepartment.id, data)
         if (result.success && result.data) {
           setDepartments((prev) =>
@@ -91,7 +245,6 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
           showMessage('error', result.error || 'Failed to update department')
         }
       } else {
-        // Create new department
         const result = await createDepartment(data)
         if (result.success && result.data) {
           setDepartments((prev) => [...prev, result.data!].sort((a, b) => a.name.localeCompare(b.name)))
@@ -297,7 +450,6 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
                     key={department.id}
                     className="hover:bg-slate-50 transition-colors"
                   >
-                    {/* Name */}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
@@ -314,8 +466,6 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
                         </span>
                       </div>
                     </td>
-
-                    {/* Code */}
                     <td className="px-6 py-4">
                       {department.code ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700">
@@ -325,15 +475,11 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
                         <span className="text-slate-400">—</span>
                       )}
                     </td>
-
-                    {/* Description */}
                     <td className="px-6 py-4">
                       <span className="text-sm text-slate-600 line-clamp-1 max-w-xs">
                         {department.description || '—'}
                       </span>
                     </td>
-
-                    {/* Status */}
                     <td className="px-6 py-4">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
@@ -355,8 +501,6 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
                         )}
                       </span>
                     </td>
-
-                    {/* Actions */}
                     <td className="px-6 py-4 text-right">
                       <div className="relative inline-block">
                         <button
@@ -370,7 +514,6 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
                           <MoreVertical className="h-4 w-4" />
                         </button>
 
-                        {/* Dropdown Menu */}
                         {actionMenuOpen === department.id && (
                           <>
                             <div
@@ -444,59 +587,14 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
         />
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal - Using Portal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setDeleteConfirm(null)}
-          />
-          <div className="flex min-h-full items-center justify-center p-4">
-            <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 animate-fade-in">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
-                  <AlertTriangle className="h-6 w-6 text-red-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800">Delete Department</h3>
-                  <p className="text-sm text-slate-500">This action cannot be undone</p>
-                </div>
-              </div>
-
-              <p className="text-slate-600 mb-6">
-                Are you sure you want to delete <strong>{deleteConfirm.name}</strong>? This will
-                remove the department from the system.
-              </p>
-
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  disabled={isLoading}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleDelete(deleteConfirm)}
-                  disabled={isLoading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:opacity-50 transition-colors flex items-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <DeleteConfirmModal
+          department={deleteConfirm}
+          isLoading={isLoading}
+          onConfirm={() => handleDelete(deleteConfirm)}
+          onCancel={() => setDeleteConfirm(null)}
+        />
       )}
     </>
   )
