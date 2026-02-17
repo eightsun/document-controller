@@ -29,6 +29,7 @@ interface Assignment {
   sequence_order: number
   is_completed: boolean
   completed_at: string | null
+  due_date: string | null
   assignment_notes: string | null
   profiles: { id: string; full_name: string | null; email: string | null } | null
 }
@@ -43,8 +44,7 @@ interface TimelineEntry {
 
 interface Comment {
   id: string
-  comment: string
-  comment_type: string
+  content: string
   created_at: string
   profiles: { id: string; full_name: string | null; email: string | null } | null
 }
@@ -83,19 +83,19 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const isBPM = currentUser.roles.includes('BPM')
   const canAssignDocNumber = (isAdmin || isBPM) && doc.document_number.startsWith('PENDING-')
   const myAssignments = assignments.filter(a => a.user_id === currentUser.id)
-  const myPendingReviews = myAssignments.filter(a => !a.is_completed && (a.role_type === 'SME' || a.role_type === 'BPM'))
-  const myPendingApprovals = myAssignments.filter(a => !a.is_completed && a.role_type === 'Approver')
-  const allReviewersCompleted = assignments.filter(a => a.role_type === 'SME' || a.role_type === 'BPM').every(a => a.is_completed)
-  const submitters = assignments.filter(a => a.role_type === 'Submitter')
-  const smeReviewers = assignments.filter(a => a.role_type === 'SME')
-  const bpmReviewers = assignments.filter(a => a.role_type === 'BPM')
-  const approvers = assignments.filter(a => a.role_type === 'Approver')
+  const myPendingReviews = myAssignments.filter(a => !a.is_completed && a.role_type === 'reviewer')
+  const myPendingApprovals = myAssignments.filter(a => !a.is_completed && a.role_type === 'approver')
+  const allReviewersCompleted = assignments.filter(a => a.role_type === 'reviewer').every(a => a.is_completed)
+  const submitters = assignments.filter(a => a.role_type === 'submitter')
+  const reviewers = assignments.filter(a => a.role_type === 'reviewer')
+  const approvers = assignments.filter(a => a.role_type === 'approver')
 
   const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
   const formatDateTime = (d: string | null) => d ? new Date(d).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
   const showMsg = (type: 'success' | 'error', msg: string) => { type === 'success' ? (setSuccess(msg), setError(null)) : (setError(msg), setSuccess(null)); setTimeout(() => { setSuccess(null); setError(null) }, 5000) }
-  const getStatusColor = (s: string) => ({ 'Initiation': 'bg-amber-100 text-amber-700', 'Pending Approval': 'bg-orange-100 text-orange-700', 'Approved': 'bg-emerald-100 text-emerald-700', 'Rejected': 'bg-red-100 text-red-700' }[s] || 'bg-slate-100 text-slate-700')
-  const getRoleColor = (r: string) => ({ 'Submitter': 'bg-blue-100 text-blue-700', 'SME': 'bg-amber-100 text-amber-700', 'BPM': 'bg-purple-100 text-purple-700', 'Approver': 'bg-emerald-100 text-emerald-700' }[r] || 'bg-slate-100 text-slate-700')
+  const getStatusColor = (s: string) => ({ 'Initiation': 'bg-amber-100 text-amber-700', 'Review': 'bg-blue-100 text-blue-700', 'Waiting Approval': 'bg-orange-100 text-orange-700', 'Approved': 'bg-emerald-100 text-emerald-700', 'Rejected': 'bg-red-100 text-red-700' }[s] || 'bg-slate-100 text-slate-700')
+  const getRoleColor = (r: string) => ({ 'submitter': 'bg-blue-100 text-blue-700', 'reviewer': 'bg-amber-100 text-amber-700', 'approver': 'bg-emerald-100 text-emerald-700' }[r] || 'bg-slate-100 text-slate-700')
+  const getRoleLabel = (r: string) => ({ 'submitter': 'Submitter', 'reviewer': 'Reviewer', 'approver': 'Approver' }[r] || r)
 
   async function handleAssignDocNum(auto: boolean) {
     setIsLoading(true)
@@ -153,55 +153,30 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <Link href="/dashboard/documents" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-2">
-            <ArrowLeft className="h-4 w-4" /> Back to Documents
-          </Link>
+          <Link href="/dashboard/documents" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-2"><ArrowLeft className="h-4 w-4" /> Back</Link>
           <h1 className="text-2xl font-bold text-slate-800">{doc.title}</h1>
           <div className="flex flex-wrap items-center gap-3 mt-2">
-            {doc.document_number.startsWith('PENDING-') ? (
-              <span className="text-amber-600 italic text-sm">Pending Verification</span>
-            ) : (
-              <span className="font-mono text-sm text-slate-600">{doc.document_number}</span>
-            )}
+            {doc.document_number.startsWith('PENDING-') ? <span className="text-amber-600 italic text-sm">Pending Verification</span> : <span className="font-mono text-sm text-slate-600">{doc.document_number}</span>}
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(doc.status)}`}>{doc.status}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canAssignDocNumber && (
-            <button onClick={() => setShowDocNumberModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-500 rounded-lg hover:bg-purple-600">
-              <Hash className="h-4 w-4" /> Assign Doc Number
-            </button>
-          )}
-          {myPendingReviews.length > 0 && (
-            <button onClick={() => { setSelectedAssignment(myPendingReviews[0]); setShowReviewModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600">
-              <ClipboardCheck className="h-4 w-4" /> Complete Review
-            </button>
-          )}
+          {canAssignDocNumber && <button onClick={() => setShowDocNumberModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-500 rounded-lg hover:bg-purple-600"><Hash className="h-4 w-4" /> Assign Doc Number</button>}
+          {myPendingReviews.length > 0 && <button onClick={() => { setSelectedAssignment(myPendingReviews[0]); setShowReviewModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600"><ClipboardCheck className="h-4 w-4" /> Complete Review</button>}
           {myPendingApprovals.length > 0 && allReviewersCompleted && (
             <>
-              <button onClick={() => { setSelectedAssignment(myPendingApprovals[0]); setShowApproveModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-emerald-600">
-                <CheckCircle className="h-4 w-4" /> Approve
-              </button>
-              <button onClick={() => { setSelectedAssignment(myPendingApprovals[0]); setShowRejectModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600">
-                <XCircle className="h-4 w-4" /> Reject
-              </button>
+              <button onClick={() => { setSelectedAssignment(myPendingApprovals[0]); setShowApproveModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-emerald-600"><CheckCircle className="h-4 w-4" /> Approve</button>
+              <button onClick={() => { setSelectedAssignment(myPendingApprovals[0]); setShowRejectModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600"><XCircle className="h-4 w-4" /> Reject</button>
             </>
           )}
-          {doc.draft_link && (
-            <a href={doc.draft_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
-              <ExternalLink className="h-4 w-4" /> Open in SharePoint
-            </a>
-          )}
+          {doc.draft_link && <a href={doc.draft_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"><ExternalLink className="h-4 w-4" /> SharePoint</a>}
         </div>
       </div>
 
       {myPendingApprovals.length > 0 && !allReviewersCompleted && (
         <div className="px-4 py-3 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 flex items-start gap-3">
           <Info className="h-5 w-5 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium">Waiting for Reviewers</p>
-            <p className="text-sm">You cannot approve until all reviewers complete their review.</p>
-          </div>
+          <div><p className="font-medium">Waiting for Reviewers</p><p className="text-sm">Cannot approve until all reviewers complete.</p></div>
         </div>
       )}
 
@@ -210,12 +185,12 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-primary-500" /> Document Information</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><label className="text-xs font-medium text-slate-500 uppercase">Document Type</label><p className="mt-1 text-sm text-slate-800">{doc.document_type_name || '—'} {doc.document_type_code && <span className="text-xs text-slate-500">({doc.document_type_code})</span>}</p></div>
-              <div><label className="text-xs font-medium text-slate-500 uppercase">Department</label><p className="mt-1 text-sm text-slate-800 flex items-center gap-1"><Building2 className="h-4 w-4 text-slate-400" />{doc.department_name || '—'}</p></div>
-              <div><label className="text-xs font-medium text-slate-500 uppercase">Version</label><p className="mt-1 text-sm text-slate-800">{doc.version}</p></div>
-              <div><label className="text-xs font-medium text-slate-500 uppercase">Created By</label><p className="mt-1 text-sm text-slate-800">{doc.created_by_name || '—'}</p></div>
-              <div><label className="text-xs font-medium text-slate-500 uppercase">Target Date</label><p className="mt-1 text-sm text-slate-800 flex items-center gap-1"><Calendar className="h-4 w-4 text-slate-400" />{formatDate(doc.target_approval_date)}</p></div>
-              <div><label className="text-xs font-medium text-slate-500 uppercase">Created At</label><p className="mt-1 text-sm text-slate-800">{formatDateTime(doc.created_at)}</p></div>
+              <div><label className="text-xs font-medium text-slate-500 uppercase">Type</label><p className="mt-1 text-sm">{doc.document_type_name || '—'} {doc.document_type_code && <span className="text-xs text-slate-500">({doc.document_type_code})</span>}</p></div>
+              <div><label className="text-xs font-medium text-slate-500 uppercase">Department</label><p className="mt-1 text-sm flex items-center gap-1"><Building2 className="h-4 w-4 text-slate-400" />{doc.department_name || '—'}</p></div>
+              <div><label className="text-xs font-medium text-slate-500 uppercase">Version</label><p className="mt-1 text-sm">{doc.version}</p></div>
+              <div><label className="text-xs font-medium text-slate-500 uppercase">Created By</label><p className="mt-1 text-sm">{doc.created_by_name || '—'}</p></div>
+              <div><label className="text-xs font-medium text-slate-500 uppercase">Target Date</label><p className="mt-1 text-sm flex items-center gap-1"><Calendar className="h-4 w-4 text-slate-400" />{formatDate(doc.target_approval_date)}</p></div>
+              <div><label className="text-xs font-medium text-slate-500 uppercase">Created At</label><p className="mt-1 text-sm">{formatDateTime(doc.created_at)}</p></div>
             </div>
             {doc.description && <div className="mt-4 pt-4 border-t border-slate-100"><label className="text-xs font-medium text-slate-500 uppercase">Description</label><p className="mt-1 text-sm text-slate-700">{doc.description}</p></div>}
           </div>
@@ -224,17 +199,17 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><Building2 className="h-5 w-5 text-primary-500" /> Affected Departments</h2>
             <div className="flex flex-wrap gap-2">
               {affectedDepartments.filter(Boolean).map((d) => <span key={d!.id} className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-sm">{d!.name}</span>)}
-              {affectedDepartments.filter(Boolean).length === 0 && <p className="text-sm text-slate-500 italic">No departments</p>}
+              {affectedDepartments.filter(Boolean).length === 0 && <p className="text-sm text-slate-500 italic">None</p>}
             </div>
           </div>
 
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><Users className="h-5 w-5 text-primary-500" /> Assignments</h2>
             <div className="space-y-4">
-              {submitters.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Submitters</h3>{submitters.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{a.role_type}</span></div></div>)}</div>}
-              {smeReviewers.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">SME Reviewers</h3>{smeReviewers.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{a.role_type}</span>{a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}</div>{a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}</div>)}</div>}
-              {bpmReviewers.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">BPM Reviewers</h3>{bpmReviewers.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{a.role_type}</span>{a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}</div>{a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}</div>)}</div>}
-              {approvers.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Approvers</h3>{!allReviewersCompleted && <p className="text-xs text-amber-600 mb-2">Approvers can act after all reviewers complete</p>}{approvers.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${!allReviewersCompleted ? 'opacity-60' : ''} ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{a.role_type}</span>{a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}</div>{a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}</div>)}</div>}
+              {submitters.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Submitters</h3>{submitters.map(a => <div key={a.id} className="p-3 rounded-lg border bg-white border-slate-200 mb-2"><div className="flex items-center gap-2"><span className="h-6 w-6 rounded-full flex items-center justify-center text-white text-xs bg-blue-500">{(a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span></div></div>)}</div>}
+              {reviewers.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Reviewers</h3>{reviewers.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>{a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}</div>{a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}</div>)}</div>}
+              {approvers.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Approvers</h3>{!allReviewersCompleted && <p className="text-xs text-amber-600 mb-2">Approvers can act after all reviewers complete</p>}{approvers.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${!allReviewersCompleted ? 'opacity-60' : ''} ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>{a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}</div>{a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}</div>)}</div>}
+              {assignments.length === 0 && <p className="text-sm text-slate-500 italic">No assignments</p>}
             </div>
           </div>
 
@@ -245,7 +220,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
               <button onClick={handleAddComment} disabled={isLoading || !newComment.trim()} className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg disabled:opacity-50"><Send className="h-4 w-4" /></button>
             </div>
             <div className="space-y-3">
-              {comments.map((c) => <div key={c.id} className="p-3 bg-slate-50 rounded-lg"><div className="flex items-center gap-2 mb-1"><span className="text-sm font-medium text-slate-800">{c.profiles?.full_name || 'Unknown'}</span><span className={`text-xs px-1.5 py-0.5 rounded ${c.comment_type === 'Review' ? 'bg-blue-100 text-blue-700' : c.comment_type === 'Approval' ? 'bg-emerald-100 text-emerald-700' : c.comment_type === 'Rejection' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{c.comment_type}</span><span className="text-xs text-slate-400">{formatDateTime(c.created_at)}</span></div><p className="text-sm text-slate-700">{c.comment}</p></div>)}
+              {comments.map((c) => <div key={c.id} className="p-3 bg-slate-50 rounded-lg"><div className="flex items-center gap-2 mb-1"><span className="text-sm font-medium text-slate-800">{c.profiles?.full_name || 'Unknown'}</span><span className="text-xs text-slate-400">{formatDateTime(c.created_at)}</span></div><p className="text-sm text-slate-700">{c.content}</p></div>)}
               {comments.length === 0 && <p className="text-sm text-slate-500 italic text-center py-4">No comments yet</p>}
             </div>
           </div>
@@ -255,7 +230,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><Clock className="h-5 w-5 text-primary-500" /> Timeline</h2>
             <div className="space-y-4">
-              {timeline.map((t, i) => <div key={t.id} className="relative pl-6">{i < timeline.length - 1 && <div className="absolute left-[9px] top-6 w-0.5 h-full bg-slate-200"></div>}<div className={`absolute left-0 top-1 w-[18px] h-[18px] rounded-full flex items-center justify-center ${t.event_type === 'Created' ? 'bg-blue-100' : t.event_type === 'Approved' ? 'bg-emerald-100' : t.event_type === 'Rejected' ? 'bg-red-100' : 'bg-slate-100'}`}><div className={`w-2 h-2 rounded-full ${t.event_type === 'Created' ? 'bg-blue-500' : t.event_type === 'Approved' ? 'bg-emerald-500' : t.event_type === 'Rejected' ? 'bg-red-500' : 'bg-slate-500'}`}></div></div><div><p className="text-sm font-medium text-slate-800">{t.event_title}</p>{t.event_description && <p className="text-xs text-slate-500 mt-0.5">{t.event_description}</p>}<p className="text-xs text-slate-400 mt-1">{formatDateTime(t.created_at)}</p></div></div>)}
+              {timeline.map((t, i) => <div key={t.id} className="relative pl-6">{i < timeline.length - 1 && <div className="absolute left-[9px] top-6 w-0.5 h-full bg-slate-200"></div>}<div className={`absolute left-0 top-1 w-[18px] h-[18px] rounded-full flex items-center justify-center ${t.event_type === 'created' ? 'bg-blue-100' : t.event_type === 'approved' ? 'bg-emerald-100' : t.event_type === 'rejected' ? 'bg-red-100' : 'bg-slate-100'}`}><div className={`w-2 h-2 rounded-full ${t.event_type === 'created' ? 'bg-blue-500' : t.event_type === 'approved' ? 'bg-emerald-500' : t.event_type === 'rejected' ? 'bg-red-500' : 'bg-slate-500'}`}></div></div><div><p className="text-sm font-medium text-slate-800">{t.event_title}</p>{t.event_description && <p className="text-xs text-slate-500 mt-0.5">{t.event_description}</p>}<p className="text-xs text-slate-400 mt-1">{formatDateTime(t.created_at)}</p></div></div>)}
               {timeline.length === 0 && <p className="text-sm text-slate-500 italic text-center py-4">No timeline</p>}
             </div>
           </div>
