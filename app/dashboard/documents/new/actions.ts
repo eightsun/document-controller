@@ -427,7 +427,7 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       }
     }
     
-    // Create document assignments with CORRECT column names
+    // Create document assignments
     const assignments: Array<{
       document_id: string
       user_id: string
@@ -491,16 +491,17 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       }
     }
     
-    // Create initial timeline entry
+    // Create initial timeline entry (CORRECT COLUMN NAMES)
     await supabase
       .from('document_timeline')
       .insert({
         document_id: documentId,
-        action: 'Document Initiated',
-        description: `Document "${data.title}" has been created and is waiting for document number verification.`,
+        event_type: 'Created',
+        event_title: 'Document Initiated',
+        event_description: `Document "${data.title}" has been created and is waiting for document number verification.`,
         performed_by: userId,
-        from_status: null,
-        to_status: 'Initiation',
+        old_status: null,
+        new_status: 'Initiation',
       })
     
     revalidatePath('/dashboard/documents')
@@ -587,15 +588,17 @@ export async function assignDocumentNumber(
       return { success: false, error: updateError.message }
     }
     
+    // Create timeline entry (CORRECT COLUMN NAMES)
     await supabase
       .from('document_timeline')
       .insert({
         document_id: data.document_id,
-        action: 'Document Number Assigned',
-        description: `Document number "${documentNumber}" has been assigned.`,
+        event_type: 'Updated',
+        event_title: 'Document Number Assigned',
+        event_description: `Document number "${documentNumber}" has been assigned.`,
         performed_by: userId,
-        from_status: 'Initiation',
-        to_status: 'Initiation',
+        old_status: 'Initiation',
+        new_status: 'Initiation',
       })
     
     revalidatePath('/dashboard/documents')
