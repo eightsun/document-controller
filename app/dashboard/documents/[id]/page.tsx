@@ -5,7 +5,6 @@ import DocumentDetail from './DocumentDetail'
 
 export const metadata = {
   title: 'Document Details | Document Controller',
-  description: 'View and manage document details',
 }
 
 interface PageProps {
@@ -16,68 +15,38 @@ function LoadingSkeleton() {
   return (
     <div className="animate-pulse space-y-6">
       <div className="h-8 w-64 bg-slate-200 rounded"></div>
-      <div className="card p-6">
-        <div className="space-y-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-4 w-full bg-slate-200 rounded"></div>
-          ))}
-        </div>
-      </div>
+      <div className="card p-6"><div className="space-y-4">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-4 w-full bg-slate-200 rounded"></div>)}</div></div>
     </div>
   )
 }
 
 async function getDocumentWithDetails(id: string) {
   const supabase = await createClient()
-  
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   
-  const { data: userRoles } = await supabase
-    .from('user_roles')
-    .select('roles (name)')
-    .eq('user_id', user.id)
-  
+  const { data: userRoles } = await supabase.from('user_roles').select('roles (name)').eq('user_id', user.id)
   const roleNames: string[] = []
   if (userRoles) {
     for (const ur of userRoles) {
       const rolesData = ur.roles as { name: string } | { name: string }[] | null
       if (rolesData) {
-        if (Array.isArray(rolesData)) {
-          rolesData.forEach(r => roleNames.push(r.name))
-        } else {
-          roleNames.push(rolesData.name)
-        }
+        if (Array.isArray(rolesData)) rolesData.forEach(r => roleNames.push(r.name))
+        else roleNames.push(rolesData.name)
       }
     }
   }
   
-  const { data: document, error } = await supabase
-    .from('documents_with_details')
-    .select('*')
-    .eq('id', id)
-    .single()
-  
+  const { data: document, error } = await supabase.from('documents_with_details').select('*').eq('id', id).single()
   if (error || !document) return null
   
   const { data: assignmentsRaw } = await supabase
     .from('document_assignments')
-    .select(`
-      id,
-      user_id,
-      role_type,
-      sequence_order,
-      is_completed,
-      completed_at,
-      due_date,
-      assignment_notes,
-      profiles (id, full_name, email)
-    `)
+    .select('id, user_id, role_type, sequence_order, is_completed, completed_at, due_date, assignment_notes, profiles (id, full_name, email)')
     .eq('document_id', id)
     .order('role_type')
     .order('sequence_order')
   
-  // Transform assignments to fix profiles type (array to single object)
   const assignments = (assignmentsRaw || []).map(a => ({
     id: a.id as string,
     user_id: a.user_id as string,
@@ -90,42 +59,24 @@ async function getDocumentWithDetails(id: string) {
     profiles: Array.isArray(a.profiles) ? a.profiles[0] || null : a.profiles as { id: string; full_name: string | null; email: string | null } | null,
   }))
   
-  const { data: affectedDeptsRaw } = await supabase
-    .from('affected_departments')
-    .select('departments (id, name, code)')
-    .eq('document_id', id)
-  
+  const { data: affectedDeptsRaw } = await supabase.from('affected_departments').select('departments (id, name, code)').eq('document_id', id)
   const affectedDepartments = (affectedDeptsRaw || []).map(ad => {
     const dept = ad.departments
-    if (Array.isArray(dept)) {
-      return dept[0] || null
-    }
+    if (Array.isArray(dept)) return dept[0] || null
     return dept as { id: string; name: string; code: string | null } | null
   })
   
-  const { data: timeline } = await supabase
-    .from('document_timeline')
-    .select('*')
-    .eq('document_id', id)
-    .order('created_at', { ascending: false })
+  const { data: timeline } = await supabase.from('document_timeline').select('*').eq('document_id', id).order('created_at', { ascending: false })
   
   const { data: commentsRaw } = await supabase
     .from('document_comments')
-    .select(`
-      id,
-      comment,
-      comment_type,
-      created_at,
-      profiles (id, full_name, email)
-    `)
+    .select('id, content, created_at, profiles (id, full_name, email)')
     .eq('document_id', id)
     .order('created_at', { ascending: false })
   
-  // Transform comments to fix profiles type
   const comments = (commentsRaw || []).map(c => ({
     id: c.id as string,
-    comment: c.comment as string,
-    comment_type: c.comment_type as string,
+    content: c.content as string,
     created_at: c.created_at as string,
     profiles: Array.isArray(c.profiles) ? c.profiles[0] || null : c.profiles as { id: string; full_name: string | null; email: string | null } | null,
   }))
@@ -156,20 +107,13 @@ async function getDocumentWithDetails(id: string) {
       created_at: t.created_at as string,
     })),
     comments,
-    currentUser: {
-      id: user.id,
-      roles: roleNames,
-    },
+    currentUser: { id: user.id, roles: roleNames },
   }
 }
 
 async function DocumentDetailWrapper({ id }: { id: string }) {
   const data = await getDocumentWithDetails(id)
-  
-  if (!data) {
-    notFound()
-  }
-
+  if (!data) notFound()
   return <DocumentDetail {...data} />
 }
 
