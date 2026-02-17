@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileText, Calendar, Building2, Users, Clock, CheckCircle, XCircle, AlertTriangle, ExternalLink, Hash, Loader2, MessageSquare, Send, ClipboardCheck, Info, Pencil, CalendarClock } from 'lucide-react'
-import { assignDocumentNumber, completeReview, approveDocument, rejectDocument, addComment, updateDocument, getDocumentForEdit, getFormOptions } from './actions'
+import { ArrowLeft, FileText, Calendar, Building2, Users, Clock, CheckCircle, XCircle, AlertTriangle, ExternalLink, Hash, MessageSquare, Send, ClipboardCheck, Info, Pencil, CalendarClock, Star, AlertCircle as AlertIcon, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { assignDocumentNumber, submitReview, approveDocument, rejectDocument, addComment, updateDocument, getDocumentForEdit, getFormOptions } from './actions'
 
 interface DocumentData {
   id: string
@@ -36,6 +36,15 @@ interface Assignment {
   profiles: { id: string; full_name: string | null; email: string | null } | null
 }
 
+interface Review {
+  id: string
+  reviewer_id: string
+  review_status: string
+  comments: string | null
+  review_date: string
+  profiles: { id: string; full_name: string | null; email: string | null } | null
+}
+
 interface TimelineEntry {
   id: string
   event_type: string
@@ -60,6 +69,7 @@ interface Department {
 interface Props {
   document: DocumentData
   assignments: Assignment[]
+  reviews: Review[]
   affectedDepartments: (Department | null)[]
   timeline: TimelineEntry[]
   comments: Comment[]
@@ -72,7 +82,7 @@ interface FormOptions {
   users: Array<{ id: string; full_name: string | null; email: string | null }>
 }
 
-export default function DocumentDetail({ document: doc, assignments, affectedDepartments, timeline, comments, currentUser }: Props) {
+export default function DocumentDetail({ document: doc, assignments, reviews, affectedDepartments, timeline, comments, currentUser }: Props) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -85,6 +95,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null)
   const [reviewComment, setReviewComment] = useState('')
+  const [reviewStatus, setReviewStatus] = useState<'submitted' | 'requested_changes' | 'approved'>('submitted')
   const [rejectReason, setRejectReason] = useState('')
   const [newComment, setNewComment] = useState('')
 
@@ -105,6 +116,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const canAssignDocNumber = canEdit && doc.document_number.startsWith('PENDING-')
   
   const safeAssignments = assignments || []
+  const safeReviews = reviews || []
   const myAssignments = safeAssignments.filter(a => a.user_id === currentUser.id)
   const myPendingReviews = myAssignments.filter(a => !a.is_completed && a.role_type === 'reviewer')
   const myPendingApprovals = myAssignments.filter(a => !a.is_completed && a.role_type === 'approver')
@@ -113,6 +125,11 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const submitters = safeAssignments.filter(a => a.role_type === 'submitter')
   const reviewers = safeAssignments.filter(a => a.role_type === 'reviewer')
   const approvers = safeAssignments.filter(a => a.role_type === 'approver')
+
+  // Calculate review progress
+  const completedReviews = reviewers.filter(r => r.is_completed).length
+  const totalReviewers = reviewers.length
+  const reviewProgress = totalReviewers > 0 ? Math.round((completedReviews / totalReviewers) * 100) : 0
 
   // Check expiry status
   const isExpired = doc.expiry_date ? new Date(doc.expiry_date) < new Date() : false
@@ -169,6 +186,32 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
       'approver': 'Approver'
     }
     return labels[r] || r
+  }
+
+  const getReviewStatusColor = (s: string) => {
+    const colors: Record<string, string> = {
+      'submitted': 'bg-blue-100 text-blue-700',
+      'requested_changes': 'bg-amber-100 text-amber-700',
+      'approved': 'bg-emerald-100 text-emerald-700'
+    }
+    return colors[s] || 'bg-slate-100 text-slate-700'
+  }
+
+  const getReviewStatusLabel = (s: string) => {
+    const labels: Record<string, string> = {
+      'submitted': 'Reviewed',
+      'requested_changes': 'Requested Changes',
+      'approved': 'Approved'
+    }
+    return labels[s] || s
+  }
+
+  const getReviewStatusIcon = (s: string) => {
+    switch (s) {
+      case 'approved': return <ThumbsUp className="h-4 w-4" />
+      case 'requested_changes': return <AlertIcon className="h-4 w-4" />
+      default: return <ClipboardCheck className="h-4 w-4" />
+    }
   }
   
   const toggleArray = (arr: string[], setArr: (v: string[]) => void, id: string) => {
@@ -241,15 +284,16 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
     setIsLoading(false)
   }
 
-  const handleReview = async () => {
+  const handleSubmitReview = async () => {
     if (!selectedAssignment) return
     setIsLoading(true)
-    const result = await completeReview(doc.id, selectedAssignment.id, reviewComment)
+    const result = await submitReview(doc.id, selectedAssignment.id, reviewStatus, reviewComment)
     if (result.success) {
-      showMsg('success', result.message || 'Done')
+      showMsg('success', result.message || 'Review submitted')
       setShowReviewModal(false)
       setSelectedAssignment(null)
       setReviewComment('')
+      setReviewStatus('submitted')
       router.refresh()
     } else {
       showMsg('error', result.error || 'Failed')
@@ -368,7 +412,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
           )}
           {myPendingReviews.length > 0 && (
             <button onClick={() => { setSelectedAssignment(myPendingReviews[0]); setShowReviewModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600">
-              <ClipboardCheck className="h-4 w-4" /> Complete Review
+              <ClipboardCheck className="h-4 w-4" /> Submit Review
             </button>
           )}
           {myPendingApprovals.length > 0 && allReviewersCompleted && (
@@ -394,7 +438,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
           <Info className="h-5 w-5 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-medium">Waiting for Reviewers</p>
-            <p className="text-sm">Cannot approve until all reviewers complete.</p>
+            <p className="text-sm">Cannot approve until all reviewers complete. ({completedReviews}/{totalReviewers} reviews completed)</p>
           </div>
         </div>
       )}
@@ -432,7 +476,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
               </div>
             </div>
 
-            {/* Published and Expiry Dates - Only show for Approved documents */}
+            {/* Published and Expiry Dates */}
             {doc.status === 'Approved' && (doc.published_at || doc.expiry_date) && (
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -482,6 +526,79 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
             </div>
           </div>
 
+          {/* Reviews Section */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <Star className="h-5 w-5 text-primary-500" /> Reviews
+              </h2>
+              {totalReviewers > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all ${reviewProgress === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                      style={{ width: `${reviewProgress}%` }}
+                    />
+                  </div>
+                  <span className="text-sm text-slate-500">{completedReviews}/{totalReviewers}</span>
+                </div>
+              )}
+            </div>
+
+            {safeReviews.length > 0 ? (
+              <div className="space-y-3">
+                {safeReviews.map((review) => (
+                  <div key={review.id} className="p-4 rounded-lg border bg-white border-slate-200">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-sm font-medium">
+                          {review.profiles?.full_name?.[0] || '?'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">
+                            {review.profiles?.full_name || review.profiles?.email || 'Unknown'}
+                          </p>
+                          <p className="text-xs text-slate-500">{formatDateTime(review.review_date)}</p>
+                        </div>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getReviewStatusColor(review.review_status)}`}>
+                        {getReviewStatusIcon(review.review_status)}
+                        {getReviewStatusLabel(review.review_status)}
+                      </span>
+                    </div>
+                    {review.comments && (
+                      <div className="mt-3 pl-11">
+                        <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3">{review.comments}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-slate-50 rounded-lg">
+                <ClipboardCheck className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">
+                  {totalReviewers > 0 ? 'No reviews submitted yet' : 'No reviewers assigned'}
+                </p>
+              </div>
+            )}
+
+            {/* Pending Reviewers */}
+            {reviewers.filter(r => !r.is_completed).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <p className="text-xs font-medium text-slate-500 uppercase mb-2">Pending Reviews</p>
+                <div className="flex flex-wrap gap-2">
+                  {reviewers.filter(r => !r.is_completed).map(r => (
+                    <span key={r.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-xs">
+                      <Clock className="h-3 w-3" />
+                      {r.profiles?.full_name || r.profiles?.email || 'Unknown'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <Users className="h-5 w-5 text-primary-500" /> Assignments
@@ -505,19 +622,26 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
               {reviewers.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-600 mb-2">Reviewers</h3>
-                  {reviewers.map(a => (
-                    <div key={a.id} className={`p-3 rounded-lg border mb-2 ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
-                      <div className="flex items-center gap-2">
-                        <span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>
-                          {a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}
-                        </span>
-                        <span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email || 'Unknown'}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>
-                        {a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}
+                  {reviewers.map(a => {
+                    const review = safeReviews.find(r => r.reviewer_id === a.user_id)
+                    return (
+                      <div key={a.id} className={`p-3 rounded-lg border mb-2 ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+                            {a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}
+                          </span>
+                          <span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email || 'Unknown'}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>
+                          {a.is_completed && review && (
+                            <span className={`px-2 py-0.5 rounded text-xs ${getReviewStatusColor(review.review_status)}`}>
+                              {getReviewStatusLabel(review.review_status)}
+                            </span>
+                          )}
+                          {!a.is_completed && <span className="text-xs text-amber-600">Pending</span>}
+                        </div>
                       </div>
-                      {a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
@@ -533,9 +657,9 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
                         </span>
                         <span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email || 'Unknown'}</span>
                         <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>
-                        {a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}
+                        {a.is_completed && <span className="text-xs text-emerald-600">Approved</span>}
+                        {!a.is_completed && <span className="text-xs text-slate-500">Pending</span>}
                       </div>
-                      {a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}
                     </div>
                   ))}
                 </div>
@@ -579,8 +703,8 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
               {timeline.map((t, i) => (
                 <div key={t.id} className="relative pl-6">
                   {i < timeline.length - 1 && <div className="absolute left-[9px] top-6 w-0.5 h-full bg-slate-200"></div>}
-                  <div className={`absolute left-0 top-1 w-[18px] h-[18px] rounded-full flex items-center justify-center ${t.event_type === 'created' ? 'bg-blue-100' : t.event_type === 'approved' ? 'bg-emerald-100' : t.event_type === 'rejected' ? 'bg-red-100' : 'bg-slate-100'}`}>
-                    <div className={`w-2 h-2 rounded-full ${t.event_type === 'created' ? 'bg-blue-500' : t.event_type === 'approved' ? 'bg-emerald-500' : t.event_type === 'rejected' ? 'bg-red-500' : 'bg-slate-500'}`}></div>
+                  <div className={`absolute left-0 top-1 w-[18px] h-[18px] rounded-full flex items-center justify-center ${t.event_type === 'created' ? 'bg-blue-100' : t.event_type === 'approved' ? 'bg-emerald-100' : t.event_type === 'rejected' ? 'bg-red-100' : t.event_type === 'review_completed' ? 'bg-amber-100' : 'bg-slate-100'}`}>
+                    <div className={`w-2 h-2 rounded-full ${t.event_type === 'created' ? 'bg-blue-500' : t.event_type === 'approved' ? 'bg-emerald-500' : t.event_type === 'rejected' ? 'bg-red-500' : t.event_type === 'review_completed' ? 'bg-amber-500' : 'bg-slate-500'}`}></div>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-slate-800">{t.event_title}</p>
@@ -595,6 +719,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
         </div>
       </div>
 
+      {/* Document Number Modal */}
       {showDocNumberModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowDocNumberModal(false)}></div>
@@ -613,23 +738,83 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
         </div>
       )}
 
+      {/* Enhanced Review Modal */}
       {showReviewModal && selectedAssignment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }}></div>
+          <div className="absolute inset-0 bg-black/50" onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment(''); setReviewStatus('submitted') }}></div>
           <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-blue-500" /> Complete Review</h3>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-blue-500" /> Submit Review</h3>
+            
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">Comments (optional)</label>
-              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Review comments..." rows={4} className="w-full px-4 py-2 border rounded-lg resize-none" />
+              <label className="block text-sm font-medium mb-2">Review Decision</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReviewStatus('submitted')}
+                  className={`p-3 rounded-lg border text-center transition-colors ${
+                    reviewStatus === 'submitted' 
+                      ? 'bg-blue-50 border-blue-300 text-blue-700' 
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <ClipboardCheck className="h-5 w-5 mx-auto mb-1" />
+                  <span className="text-xs font-medium">Reviewed</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewStatus('approved')}
+                  className={`p-3 rounded-lg border text-center transition-colors ${
+                    reviewStatus === 'approved' 
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700' 
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <ThumbsUp className="h-5 w-5 mx-auto mb-1" />
+                  <span className="text-xs font-medium">Approved</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewStatus('requested_changes')}
+                  className={`p-3 rounded-lg border text-center transition-colors ${
+                    reviewStatus === 'requested_changes' 
+                      ? 'bg-amber-50 border-amber-300 text-amber-700' 
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <AlertIcon className="h-5 w-5 mx-auto mb-1" />
+                  <span className="text-xs font-medium">Changes</span>
+                </button>
+              </div>
             </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">
+                Comments {reviewStatus === 'requested_changes' && <span className="text-red-500">*</span>}
+              </label>
+              <textarea 
+                value={reviewComment} 
+                onChange={(e) => setReviewComment(e.target.value)} 
+                placeholder={reviewStatus === 'requested_changes' ? "Please describe the changes needed..." : "Add your review comments (optional)..."} 
+                rows={4} 
+                className="w-full px-4 py-2 border rounded-lg resize-none" 
+              />
+            </div>
+
             <div className="flex gap-2">
-              <button onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button>
-              <button onClick={handleReview} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Complete Review'}</button>
+              <button onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment(''); setReviewStatus('submitted') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button>
+              <button 
+                onClick={handleSubmitReview} 
+                disabled={isLoading || (reviewStatus === 'requested_changes' && !reviewComment.trim())} 
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg disabled:opacity-50"
+              >
+                {isLoading ? 'Submitting...' : 'Submit Review'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Approve Modal */}
       {showApproveModal && selectedAssignment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }}></div>
@@ -647,6 +832,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
         </div>
       )}
 
+      {/* Reject Modal */}
       {showRejectModal && selectedAssignment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }}></div>
@@ -664,6 +850,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
         </div>
       )}
 
+      {/* Edit Modal */}
       {showEditModal && formOptions && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowEditModal(false)}></div>
