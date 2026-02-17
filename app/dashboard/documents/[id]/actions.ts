@@ -124,7 +124,6 @@ export async function completeReview(documentId: string, assignmentId: string, c
       performed_by: user.id,
     })
     
-    // Check if all reviewers completed
     const { data: allAssignments } = await supabase.from('document_assignments').select('role_type, is_completed').eq('document_id', documentId)
     const reviewers = allAssignments?.filter(a => a.role_type === 'reviewer') || []
     const allReviewersComplete = reviewers.length > 0 && reviewers.every(r => r.is_completed)
@@ -243,7 +242,9 @@ export async function addComment(documentId: string, content: string): Promise<A
   }
 }
 
-// Add this to the existing actions.ts file
+// ============================================================================
+// EDIT DOCUMENT
+// ============================================================================
 
 export interface UpdateDocumentData {
   title?: string
@@ -265,6 +266,9 @@ export async function updateDocument(documentId: string, data: UpdateDocumentDat
 
     const supabase = await createClient()
     
+    // Get current document to find submitter
+    const { data: currentDoc } = await supabase.from('documents').select('created_by').eq('id', documentId).single()
+    
     // Update document fields
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (data.title) updateData.title = data.title.trim()
@@ -278,7 +282,7 @@ export async function updateDocument(documentId: string, data: UpdateDocumentDat
     if (updateError) return { success: false, error: updateError.message }
     
     // Update affected departments if provided
-    if (data.affected_department_ids) {
+    if (data.affected_department_ids !== undefined) {
       await supabase.from('affected_departments').delete().eq('document_id', documentId)
       if (data.affected_department_ids.length > 0) {
         const affectedDeptInserts = data.affected_department_ids.map(deptId => ({ document_id: documentId, department_id: deptId }))
@@ -288,40 +292,33 @@ export async function updateDocument(documentId: string, data: UpdateDocumentDat
     
     // Update assignments if provided
     if (data.reviewer_ids !== undefined || data.approver_ids !== undefined) {
-      // Get current submitter to preserve
-      const { data: currentSubmitter } = await supabase
-        .from('document_assignments')
-        .select('user_id')
-        .eq('document_id', documentId)
-        .eq('role_type', 'submitter')
-        .single()
-      
-      // Delete existing assignments
+      // Delete existing non-submitter assignments
       await supabase.from('document_assignments').delete().eq('document_id', documentId)
       
       const assignments: Array<{ document_id: string; user_id: string; role_type: string; sequence_order: number; assigned_by: string }> = []
       
-      // Re-add submitter
-      if (currentSubmitter) {
-        assignments.push({ document_id: documentId, user_id: currentSubmitter.user_id, role_type: 'submitter', sequence_order: 1, assigned_by: user.id })
+      // Add submitter (document creator)
+      if (currentDoc?.created_by) {
+        assignments.push({ document_id: documentId, user_id: currentDoc.created_by, role_type: 'submitter', sequence_order: 1, assigned_by: user.id })
       }
       
       // Add reviewers
-      if (data.reviewer_ids) {
+      if (data.reviewer_ids && data.reviewer_ids.length > 0) {
         data.reviewer_ids.forEach((id, index) => {
           assignments.push({ document_id: documentId, user_id: id, role_type: 'reviewer', sequence_order: index + 1, assigned_by: user.id })
         })
       }
       
       // Add approvers
-      if (data.approver_ids) {
+      if (data.approver_ids && data.approver_ids.length > 0) {
         data.approver_ids.forEach((id, index) => {
           assignments.push({ document_id: documentId, user_id: id, role_type: 'approver', sequence_order: index + 1, assigned_by: user.id })
         })
       }
       
       if (assignments.length > 0) {
-        await supabase.from('document_assignments').insert(assignments)
+        const { error: assignError } = await supabase.from('document_assignments').insert(assignments)
+        if (assignError) console.error('Error inserting assignments:', assignError)
       }
     }
     
@@ -344,15 +341,7 @@ export async function updateDocument(documentId: string, data: UpdateDocumentDat
 }
 
 export async function getDocumentForEdit(documentId: string): Promise<ActionResponse<{
-  document: {
-    id: string
-    title: string
-    description: string | null
-    document_type_id: string
-    department_id: string
-    draft_link: string | null
-    target_approval_date: string | null
-  }
+  document: { id: string; title: string; description: string | null; document_type_id: string; department_id: string; draft_link: string | null; target_approval_date: string | null }
   affected_department_ids: string[]
   reviewer_ids: string[]
   approver_ids: string[]
@@ -364,12 +353,7 @@ export async function getDocumentForEdit(documentId: string): Promise<ActionResp
 
     const supabase = await createClient()
     
-    const { data: doc, error } = await supabase
-      .from('documents')
-      .select('id, title, description, document_type_id, department_id, draft_link, target_approval_date')
-      .eq('id', documentId)
-      .single()
-    
+    const { data: doc, error } = await supabase.from('documents').select('id, title, description, document_type_id, department_id, draft_link, target_approval_date').eq('id', documentId).single()
     if (error || !doc) return { success: false, error: 'Document not found' }
     
     const { data: affectedDepts } = await supabase.from('affected_departments').select('department_id').eq('document_id', documentId)
@@ -383,6 +367,31 @@ export async function getDocumentForEdit(documentId: string): Promise<ActionResp
         affected_department_ids: (affectedDepts || []).map(d => d.department_id),
         reviewer_ids: (reviewerAssignments || []).map(a => a.user_id),
         approver_ids: (approverAssignments || []).map(a => a.user_id),
+      }
+    }
+  } catch (error) {
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+export async function getFormOptions(): Promise<ActionResponse<{
+  documentTypes: Array<{ id: string; name: string; code: string }>
+  departments: Array<{ id: string; name: string; code: string | null }>
+  users: Array<{ id: string; full_name: string | null; email: string | null }>
+}>> {
+  try {
+    const supabase = await createClient()
+    
+    const { data: documentTypes } = await supabase.from('document_types').select('id, name, code').eq('is_active', true).order('name')
+    const { data: departments } = await supabase.from('departments').select('id, name, code').eq('is_active', true).is('deleted_at', null).order('name')
+    const { data: users } = await supabase.from('profiles').select('id, full_name, email').eq('is_active', true).order('full_name')
+    
+    return {
+      success: true,
+      data: {
+        documentTypes: documentTypes || [],
+        departments: departments || [],
+        users: users || [],
       }
     }
   } catch (error) {
