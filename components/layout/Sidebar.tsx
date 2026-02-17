@@ -15,16 +15,16 @@ import {
   X,
   Building2,
   UserCog,
-  Shield
+  Shield,
+  Bell
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const mainNavigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Documents', href: '/dashboard/documents', icon: FileText },
-  { name: 'Upload', href: '/dashboard/upload', icon: Upload },
+  { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
   { name: 'Pending Review', href: '/dashboard/pending', icon: Clock },
-  { name: 'Approved', href: '/dashboard/approved', icon: FileCheck },
   { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
 ]
 
