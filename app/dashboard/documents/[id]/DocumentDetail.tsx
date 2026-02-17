@@ -1,68 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileText, Calendar, Building2, Users, Clock, CheckCircle, XCircle, AlertTriangle, ExternalLink, Hash, Loader2, MessageSquare, Send, ClipboardCheck, Info } from 'lucide-react'
-import { assignDocumentNumber, completeReview, approveDocument, rejectDocument, addComment } from './actions'
+import { ArrowLeft, FileText, Calendar, Building2, Users, Clock, CheckCircle, XCircle, AlertTriangle, ExternalLink, Hash, Loader2, MessageSquare, Send, ClipboardCheck, Info, Pencil, ChevronDown } from 'lucide-react'
+import { assignDocumentNumber, completeReview, approveDocument, rejectDocument, addComment, updateDocument, getDocumentForEdit, getFormOptions } from './actions'
 
-interface DocumentData {
-  id: string
-  document_number: string
-  title: string
-  description: string | null
-  status: string
-  version: string
-  target_approval_date: string | null
-  draft_link: string | null
-  created_at: string
-  document_type_name: string | null
-  document_type_code: string | null
-  department_name: string | null
-  created_by_name: string | null
-}
-
-interface Assignment {
-  id: string
-  user_id: string
-  role_type: string
-  sequence_order: number
-  is_completed: boolean
-  completed_at: string | null
-  due_date: string | null
-  assignment_notes: string | null
-  profiles: { id: string; full_name: string | null; email: string | null } | null
-}
-
-interface TimelineEntry {
-  id: string
-  event_type: string
-  event_title: string
-  event_description: string | null
-  created_at: string
-}
-
-interface Comment {
-  id: string
-  content: string
-  created_at: string
-  profiles: { id: string; full_name: string | null; email: string | null } | null
-}
-
-interface Department {
-  id: string
-  name: string
-  code: string | null
-}
-
-interface Props {
-  document: DocumentData
-  assignments: Assignment[]
-  affectedDepartments: (Department | null)[]
-  timeline: TimelineEntry[]
-  comments: Comment[]
-  currentUser: { id: string; roles: string[] }
-}
+interface DocumentData { id: string; document_number: string; title: string; description: string | null; status: string; version: string; target_approval_date: string | null; draft_link: string | null; created_at: string; document_type_name: string | null; document_type_code: string | null; department_name: string | null; created_by_name: string | null }
+interface Assignment { id: string; user_id: string; role_type: string; sequence_order: number; is_completed: boolean; completed_at: string | null; due_date: string | null; assignment_notes: string | null; profiles: { id: string; full_name: string | null; email: string | null } | null }
+interface TimelineEntry { id: string; event_type: string; event_title: string; event_description: string | null; created_at: string }
+interface Comment { id: string; content: string; created_at: string; profiles: { id: string; full_name: string | null; email: string | null } | null }
+interface Department { id: string; name: string; code: string | null }
+interface Props { document: DocumentData; assignments: Assignment[]; affectedDepartments: (Department | null)[]; timeline: TimelineEntry[]; comments: Comment[]; currentUser: { id: string; roles: string[] } }
 
 export default function DocumentDetail({ document: doc, assignments, affectedDepartments, timeline, comments, currentUser }: Props) {
   const router = useRouter()
@@ -74,18 +23,32 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null)
   const [reviewComment, setReviewComment] = useState('')
   const [rejectReason, setRejectReason] = useState('')
   const [newComment, setNewComment] = useState('')
 
+  // Edit form state
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editDocTypeId, setEditDocTypeId] = useState('')
+  const [editDeptId, setEditDeptId] = useState('')
+  const [editDraftLink, setEditDraftLink] = useState('')
+  const [editTargetDate, setEditTargetDate] = useState('')
+  const [editAffectedDepts, setEditAffectedDepts] = useState<string[]>([])
+  const [editReviewerIds, setEditReviewerIds] = useState<string[]>([])
+  const [editApproverIds, setEditApproverIds] = useState<string[]>([])
+  const [formOptions, setFormOptions] = useState<{ documentTypes: Array<{ id: string; name: string; code: string }>; departments: Array<{ id: string; name: string; code: string | null }>; users: Array<{ id: string; full_name: string | null; email: string | null }> } | null>(null)
+
   const isAdmin = currentUser.roles.includes('Admin')
   const isBPM = currentUser.roles.includes('BPM')
-  const canAssignDocNumber = (isAdmin || isBPM) && doc.document_number.startsWith('PENDING-')
+  const canEdit = isAdmin || isBPM
+  const canAssignDocNumber = canEdit && doc.document_number.startsWith('PENDING-')
   const myAssignments = assignments.filter(a => a.user_id === currentUser.id)
   const myPendingReviews = myAssignments.filter(a => !a.is_completed && a.role_type === 'reviewer')
   const myPendingApprovals = myAssignments.filter(a => !a.is_completed && a.role_type === 'approver')
-  const allReviewersCompleted = assignments.filter(a => a.role_type === 'reviewer').every(a => a.is_completed)
+  const allReviewersCompleted = assignments.filter(a => a.role_type === 'reviewer').length === 0 || assignments.filter(a => a.role_type === 'reviewer').every(a => a.is_completed)
   const submitters = assignments.filter(a => a.role_type === 'submitter')
   const reviewers = assignments.filter(a => a.role_type === 'reviewer')
   const approvers = assignments.filter(a => a.role_type === 'approver')
@@ -96,6 +59,35 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const getStatusColor = (s: string) => ({ 'Initiation': 'bg-amber-100 text-amber-700', 'Review': 'bg-blue-100 text-blue-700', 'Waiting Approval': 'bg-orange-100 text-orange-700', 'Approved': 'bg-emerald-100 text-emerald-700', 'Rejected': 'bg-red-100 text-red-700' }[s] || 'bg-slate-100 text-slate-700')
   const getRoleColor = (r: string) => ({ 'submitter': 'bg-blue-100 text-blue-700', 'reviewer': 'bg-amber-100 text-amber-700', 'approver': 'bg-emerald-100 text-emerald-700' }[r] || 'bg-slate-100 text-slate-700')
   const getRoleLabel = (r: string) => ({ 'submitter': 'Submitter', 'reviewer': 'Reviewer', 'approver': 'Approver' }[r] || r)
+  const toggleArray = (arr: string[], setArr: (v: string[]) => void, id: string) => { arr.includes(id) ? setArr(arr.filter(i => i !== id)) : setArr([...arr, id]) }
+
+  async function openEditModal() {
+    setIsLoading(true)
+    const [docResult, optionsResult] = await Promise.all([getDocumentForEdit(doc.id), getFormOptions()])
+    if (docResult.success && docResult.data && optionsResult.success && optionsResult.data) {
+      const d = docResult.data.document
+      setEditTitle(d.title)
+      setEditDescription(d.description || '')
+      setEditDocTypeId(d.document_type_id)
+      setEditDeptId(d.department_id)
+      setEditDraftLink(d.draft_link || '')
+      setEditTargetDate(d.target_approval_date?.split('T')[0] || '')
+      setEditAffectedDepts(docResult.data.affected_department_ids)
+      setEditReviewerIds(docResult.data.reviewer_ids)
+      setEditApproverIds(docResult.data.approver_ids)
+      setFormOptions(optionsResult.data)
+      setShowEditModal(true)
+    } else { showMsg('error', docResult.error || optionsResult.error || 'Failed to load') }
+    setIsLoading(false)
+  }
+
+  async function handleSaveEdit() {
+    setIsLoading(true)
+    const result = await updateDocument(doc.id, { title: editTitle, description: editDescription, document_type_id: editDocTypeId, department_id: editDeptId, draft_link: editDraftLink, target_approval_date: editTargetDate, affected_department_ids: editAffectedDepts, reviewer_ids: editReviewerIds, approver_ids: editApproverIds })
+    if (result.success) { showMsg('success', result.message || 'Updated'); setShowEditModal(false); router.refresh() }
+    else { showMsg('error', result.error || 'Failed') }
+    setIsLoading(false)
+  }
 
   async function handleAssignDocNum(auto: boolean) {
     setIsLoading(true)
@@ -161,6 +153,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canEdit && <button onClick={openEditModal} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"><Pencil className="h-4 w-4" /> Edit</button>}
           {canAssignDocNumber && <button onClick={() => setShowDocNumberModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-500 rounded-lg hover:bg-purple-600"><Hash className="h-4 w-4" /> Assign Doc Number</button>}
           {myPendingReviews.length > 0 && <button onClick={() => { setSelectedAssignment(myPendingReviews[0]); setShowReviewModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600"><ClipboardCheck className="h-4 w-4" /> Complete Review</button>}
           {myPendingApprovals.length > 0 && allReviewersCompleted && (
@@ -208,8 +201,8 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
             <div className="space-y-4">
               {submitters.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Submitters</h3>{submitters.map(a => <div key={a.id} className="p-3 rounded-lg border bg-white border-slate-200 mb-2"><div className="flex items-center gap-2"><span className="h-6 w-6 rounded-full flex items-center justify-center text-white text-xs bg-blue-500">{(a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span></div></div>)}</div>}
               {reviewers.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Reviewers</h3>{reviewers.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>{a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}</div>{a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}</div>)}</div>}
-              {approvers.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Approvers</h3>{!allReviewersCompleted && <p className="text-xs text-amber-600 mb-2">Approvers can act after all reviewers complete</p>}{approvers.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${!allReviewersCompleted ? 'opacity-60' : ''} ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>{a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}</div>{a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}</div>)}</div>}
-              {assignments.length === 0 && <p className="text-sm text-slate-500 italic">No assignments</p>}
+              {approvers.length > 0 && <div><h3 className="text-sm font-medium text-slate-600 mb-2">Approvers</h3>{!allReviewersCompleted && reviewers.length > 0 && <p className="text-xs text-amber-600 mb-2">Approvers can act after all reviewers complete</p>}{approvers.map(a => <div key={a.id} className={`p-3 rounded-lg border mb-2 ${!allReviewersCompleted && reviewers.length > 0 ? 'opacity-60' : ''} ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}><div className="flex items-center gap-2"><span className={`h-6 w-6 rounded-full flex items-center justify-center text-white text-xs ${a.is_completed ? 'bg-emerald-500' : 'bg-slate-400'}`}>{a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}</span><span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email}</span><span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>{a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}</div>{a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}</div>)}</div>}
+              {assignments.length === 0 && <p className="text-sm text-slate-500 italic">No assignments yet. {canEdit && 'Click Edit to add reviewers and approvers.'}</p>}
             </div>
           </div>
 
@@ -237,13 +230,36 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
         </div>
       </div>
 
-      {showDocNumberModal && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50" onClick={() => setShowDocNumberModal(false)}></div><div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6"><h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Hash className="h-5 w-5 text-purple-500" /> Assign Document Number</h3><p className="text-sm text-slate-600 mb-4">Auto-generate or enter manually.</p><div className="mb-4"><label className="block text-sm font-medium mb-1">Manual Number</label><input type="text" value={manualDocNumber} onChange={(e) => setManualDocNumber(e.target.value.toUpperCase())} placeholder="MRT-AST-PLC-001" className="w-full px-4 py-2 border rounded-lg font-mono" /><p className="text-xs text-slate-500 mt-1">Format: XXX-XXX-XXX-NNN</p></div><div className="flex gap-2"><button onClick={() => handleAssignDocNum(true)} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Auto-Generate'}</button><button onClick={() => handleAssignDocNum(false)} disabled={isLoading || !manualDocNumber.trim()} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg disabled:opacity-50">Use Manual</button></div></div></div>}
+      {/* Doc Number Modal */}
+      {showDocNumberModal && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50" onClick={() => setShowDocNumberModal(false)}></div><div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6"><h3 className="text-lg font-semibold mb-4"><Hash className="inline h-5 w-5 text-purple-500 mr-2" />Assign Document Number</h3><div className="mb-4"><input type="text" value={manualDocNumber} onChange={(e) => setManualDocNumber(e.target.value.toUpperCase())} placeholder="MRT-AST-PLC-001" className="w-full px-4 py-2 border rounded-lg font-mono" /><p className="text-xs text-slate-500 mt-1">Format: XXX-XXX-XXX-NNN or leave empty to auto-generate</p></div><div className="flex gap-2"><button onClick={() => handleAssignDocNum(true)} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Auto-Generate'}</button><button onClick={() => handleAssignDocNum(false)} disabled={isLoading || !manualDocNumber.trim()} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg disabled:opacity-50">Use Manual</button></div></div></div>}
 
-      {showReviewModal && selectedAssignment && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50" onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }}></div><div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6"><h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-blue-500" /> Complete Review</h3><div className="mb-4"><label className="block text-sm font-medium mb-1">Comments</label><textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Review comments..." rows={4} className="w-full px-4 py-2 border rounded-lg resize-none" /></div><div className="flex gap-2"><button onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button><button onClick={handleReview} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Complete'}</button></div></div></div>}
+      {/* Review Modal */}
+      {showReviewModal && selectedAssignment && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50" onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }}></div><div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6"><h3 className="text-lg font-semibold mb-4"><ClipboardCheck className="inline h-5 w-5 text-blue-500 mr-2" />Complete Review</h3><textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Review comments..." rows={4} className="w-full px-4 py-2 border rounded-lg resize-none mb-4" /><div className="flex gap-2"><button onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }} className="flex-1 px-4 py-2 text-sm text-slate-700 bg-white border rounded-lg">Cancel</button><button onClick={handleReview} disabled={isLoading} className="flex-1 px-4 py-2 text-sm text-white bg-blue-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Complete'}</button></div></div></div>}
 
-      {showApproveModal && selectedAssignment && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50" onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }}></div><div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6"><h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><CheckCircle className="h-5 w-5 text-emerald-500" /> Approve Document</h3><div className="mb-4"><label className="block text-sm font-medium mb-1">Comments</label><textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Approval comments..." rows={3} className="w-full px-4 py-2 border rounded-lg resize-none" /></div><div className="flex gap-2"><button onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button><button onClick={handleApproveDoc} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Approve'}</button></div></div></div>}
+      {/* Approve Modal */}
+      {showApproveModal && selectedAssignment && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50" onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }}></div><div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6"><h3 className="text-lg font-semibold mb-4"><CheckCircle className="inline h-5 w-5 text-emerald-500 mr-2" />Approve</h3><textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Comments..." rows={3} className="w-full px-4 py-2 border rounded-lg resize-none mb-4" /><div className="flex gap-2"><button onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }} className="flex-1 px-4 py-2 text-sm text-slate-700 bg-white border rounded-lg">Cancel</button><button onClick={handleApproveDoc} disabled={isLoading} className="flex-1 px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Approve'}</button></div></div></div>}
 
-      {showRejectModal && selectedAssignment && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50" onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }}></div><div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6"><h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><XCircle className="h-5 w-5 text-red-500" /> Reject Document</h3><div className="mb-4"><label className="block text-sm font-medium mb-1">Reason <span className="text-red-500">*</span></label><textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Rejection reason..." rows={4} className="w-full px-4 py-2 border rounded-lg resize-none" /></div><div className="flex gap-2"><button onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button><button onClick={handleRejectDoc} disabled={isLoading || !rejectReason.trim()} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Reject'}</button></div></div></div>}
+      {/* Reject Modal */}
+      {showRejectModal && selectedAssignment && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50" onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }}></div><div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6"><h3 className="text-lg font-semibold mb-4"><XCircle className="inline h-5 w-5 text-red-500 mr-2" />Reject</h3><textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason..." rows={4} className="w-full px-4 py-2 border rounded-lg resize-none mb-4" /><div className="flex gap-2"><button onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }} className="flex-1 px-4 py-2 text-sm text-slate-700 bg-white border rounded-lg">Cancel</button><button onClick={handleRejectDoc} disabled={isLoading || !rejectReason.trim()} className="flex-1 px-4 py-2 text-sm text-white bg-red-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Reject'}</button></div></div></div>}
+
+      {/* Edit Modal */}
+      {showEditModal && formOptions && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto"><div className="absolute inset-0 bg-black/50" onClick={() => setShowEditModal(false)}></div><div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
+        <h3 className="text-lg font-semibold mb-4"><Pencil className="inline h-5 w-5 text-primary-500 mr-2" />Edit Document</h3>
+        <div className="space-y-4">
+          <div><label className="block text-sm font-medium mb-1">Title</label><input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-4 py-2 border rounded-lg" /></div>
+          <div><label className="block text-sm font-medium mb-1">Description</label><textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={2} className="w-full px-4 py-2 border rounded-lg resize-none" /></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-sm font-medium mb-1">Document Type</label><select value={editDocTypeId} onChange={(e) => setEditDocTypeId(e.target.value)} className="w-full px-4 py-2 border rounded-lg">{formOptions.documentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+            <div><label className="block text-sm font-medium mb-1">Department</label><select value={editDeptId} onChange={(e) => setEditDeptId(e.target.value)} className="w-full px-4 py-2 border rounded-lg">{formOptions.departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+          </div>
+          <div><label className="block text-sm font-medium mb-1">SharePoint Link</label><input type="url" value={editDraftLink} onChange={(e) => setEditDraftLink(e.target.value)} className="w-full px-4 py-2 border rounded-lg" /></div>
+          <div><label className="block text-sm font-medium mb-1">Target Date</label><input type="date" value={editTargetDate} onChange={(e) => setEditTargetDate(e.target.value)} className="w-full px-4 py-2 border rounded-lg" /></div>
+          <div><label className="block text-sm font-medium mb-1">Affected Departments</label><div className="grid grid-cols-3 gap-2 max-h-32 overflow-y-auto border rounded-lg p-2">{formOptions.departments.map(d => <label key={d.id} className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${editAffectedDepts.includes(d.id) ? 'bg-primary-100' : ''}`}><input type="checkbox" checked={editAffectedDepts.includes(d.id)} onChange={() => toggleArray(editAffectedDepts, setEditAffectedDepts, d.id)} />{d.name}</label>)}</div></div>
+          <div><label className="block text-sm font-medium mb-1">Reviewers</label><div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded-lg p-2">{formOptions.users.map(u => <label key={u.id} className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${editReviewerIds.includes(u.id) ? 'bg-amber-100' : ''}`}><input type="checkbox" checked={editReviewerIds.includes(u.id)} onChange={() => toggleArray(editReviewerIds, setEditReviewerIds, u.id)} />{u.full_name || u.email}</label>)}</div></div>
+          <div><label className="block text-sm font-medium mb-1">Approvers</label><div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded-lg p-2">{formOptions.users.map(u => <label key={u.id} className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${editApproverIds.includes(u.id) ? 'bg-emerald-100' : ''}`}><input type="checkbox" checked={editApproverIds.includes(u.id)} onChange={() => toggleArray(editApproverIds, setEditApproverIds, u.id)} />{u.full_name || u.email}</label>)}</div></div>
+        </div>
+        <div className="flex gap-2 mt-6"><button onClick={() => setShowEditModal(false)} className="flex-1 px-4 py-2 text-sm text-slate-700 bg-white border rounded-lg">Cancel</button><button onClick={handleSaveEdit} disabled={isLoading} className="flex-1 px-4 py-2 text-sm text-white bg-primary-500 rounded-lg disabled:opacity-50">{isLoading ? 'Saving...' : 'Save Changes'}</button></div>
+      </div></div>}
     </div>
   )
 }
