@@ -279,46 +279,80 @@ export async function updateDocument(documentId: string, data: UpdateDocumentDat
     if (data.target_approval_date) updateData.target_approval_date = data.target_approval_date
     
     const { error: updateError } = await supabase.from('documents').update(updateData).eq('id', documentId)
-    if (updateError) return { success: false, error: updateError.message }
+    if (updateError) return { success: false, error: `Update failed: ${updateError.message}` }
     
     // Update affected departments if provided
     if (data.affected_department_ids !== undefined) {
       await supabase.from('affected_departments').delete().eq('document_id', documentId)
       if (data.affected_department_ids.length > 0) {
         const affectedDeptInserts = data.affected_department_ids.map(deptId => ({ document_id: documentId, department_id: deptId }))
-        await supabase.from('affected_departments').insert(affectedDeptInserts)
+        const { error: affectedError } = await supabase.from('affected_departments').insert(affectedDeptInserts)
+        if (affectedError) console.error('Affected dept error:', affectedError)
       }
     }
     
     // Update assignments if provided
     if (data.reviewer_ids !== undefined || data.approver_ids !== undefined) {
-      // Delete existing non-submitter assignments
-      await supabase.from('document_assignments').delete().eq('document_id', documentId)
+      // Delete existing assignments
+      const { error: deleteError } = await supabase.from('document_assignments').delete().eq('document_id', documentId)
+      if (deleteError) {
+        console.error('Delete assignments error:', deleteError)
+        return { success: false, error: `Failed to clear assignments: ${deleteError.message}` }
+      }
       
       const assignments: Array<{ document_id: string; user_id: string; role_type: string; sequence_order: number; assigned_by: string }> = []
       
       // Add submitter (document creator)
       if (currentDoc?.created_by) {
-        assignments.push({ document_id: documentId, user_id: currentDoc.created_by, role_type: 'submitter', sequence_order: 1, assigned_by: user.id })
+        assignments.push({ 
+          document_id: documentId, 
+          user_id: currentDoc.created_by, 
+          role_type: 'submitter', 
+          sequence_order: 1, 
+          assigned_by: user.id 
+        })
       }
       
       // Add reviewers
       if (data.reviewer_ids && data.reviewer_ids.length > 0) {
         data.reviewer_ids.forEach((id, index) => {
-          assignments.push({ document_id: documentId, user_id: id, role_type: 'reviewer', sequence_order: index + 1, assigned_by: user.id })
+          assignments.push({ 
+            document_id: documentId, 
+            user_id: id, 
+            role_type: 'reviewer', 
+            sequence_order: index + 1, 
+            assigned_by: user.id 
+          })
         })
       }
       
       // Add approvers
       if (data.approver_ids && data.approver_ids.length > 0) {
         data.approver_ids.forEach((id, index) => {
-          assignments.push({ document_id: documentId, user_id: id, role_type: 'approver', sequence_order: index + 1, assigned_by: user.id })
+          assignments.push({ 
+            document_id: documentId, 
+            user_id: id, 
+            role_type: 'approver', 
+            sequence_order: index + 1, 
+            assigned_by: user.id 
+          })
         })
       }
       
+      console.log('Inserting assignments:', JSON.stringify(assignments, null, 2))
+      
       if (assignments.length > 0) {
-        const { error: assignError } = await supabase.from('document_assignments').insert(assignments)
-        if (assignError) console.error('Error inserting assignments:', assignError)
+        const { data: insertedData, error: assignError } = await supabase
+          .from('document_assignments')
+          .insert(assignments)
+          .select()
+        
+        if (assignError) {
+          console.error('Insert assignments error:', assignError)
+          return { success: false, error: `Failed to save assignments: ${assignError.message}` }
+        }
+        
+        console.log('Inserted assignments:', insertedData)
       }
     }
     
@@ -336,7 +370,7 @@ export async function updateDocument(documentId: string, data: UpdateDocumentDat
     return { success: true, message: 'Document updated successfully' }
   } catch (error) {
     console.error('Error updating document:', error)
-    return { success: false, error: 'An unexpected error occurred' }
+    return { success: false, error: `Unexpected error: ${error}` }
   }
 }
 
