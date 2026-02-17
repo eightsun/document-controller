@@ -241,4 +241,220 @@ export default function DepartmentForm({
                   borderRadius: '8px',
                   fontSize: '14px',
                   outline: 'none',
-                  textTransf
+                  textTransform: 'uppercase',
+                  boxSizing: 'border-box',
+                }}
+                {...register('code', {
+                  maxLength: { value: 50, message: 'Code must be less than 50 characters' },
+                })}
+              />
+              <p style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
+                Short code for document numbering (e.g., IT, FIN, HR)
+              </p>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label
+                htmlFor="description"
+                style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  color: '#374151',
+                  marginBottom: '6px',
+                }}
+              >
+                Description
+              </label>
+              <textarea
+                id="description"
+                rows={3}
+                placeholder="Brief description of the department..."
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  resize: 'none',
+                  boxSizing: 'border-box',
+                  fontFamily: 'inherit',
+                }}
+                {...register('description')}
+              />
+            </div>
+
+            {/* Active Status */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px',
+                backgroundColor: '#f8fafc',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              <div>
+                <label
+                  htmlFor="is_active"
+                  style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}
+                >
+                  Active Status
+                </label>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                  Inactive departments won&apos;t appear in dropdowns
+                </p>
+              </div>
+              <label style={{ position: 'relative', display: 'inline-flex', cursor: 'pointer' }}>
+                <input
+                  id="is_active"
+                  type="checkbox"
+                  style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
+                  {...register('is_active')}
+                />
+                <div
+                  style={{
+                    width: '44px',
+                    height: '24px',
+                    backgroundColor: watch('is_active') ? '#4f46e5' : '#cbd5e1',
+                    borderRadius: '12px',
+                    position: 'relative',
+                    transition: 'background-color 0.2s',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '2px',
+                      left: watch('is_active') ? '22px' : '2px',
+                      width: '20px',
+                      height: '20px',
+                      backgroundColor: 'white',
+                      borderRadius: '50%',
+                      transition: 'left 0.2s',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    }}
+                  />
+                </div>
+              </label>
+            </div>
+
+            {/* Preview */}
+            {watchName && (
+              <div
+                style={{
+                  padding: '16px',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <p
+                  style={{
+                    margin: '0 0 8px 0',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  Preview
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      backgroundColor: '#eef2ff',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Building2 style={{ width: '20px', height: '20px', color: '#4f46e5' }} />
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 500, color: '#1e293b' }}>{watchName}</p>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                      {watch('code')?.toUpperCase() || 'No code'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: '12px',
+              marginTop: '24px',
+              paddingTop: '24px',
+              borderTop: '1px solid #e2e8f0',
+            }}
+          >
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isLoading}
+              style={{
+                padding: '10px 16px',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: '#374151',
+                backgroundColor: 'white',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                opacity: isLoading ? 0.5 : 1,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              style={{
+                padding: '10px 16px',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: 'white',
+                backgroundColor: '#4f46e5',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                opacity: isLoading ? 0.5 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                  {isEditing ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                <>{isEditing ? 'Update Department' : 'Create Department'}</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+
+  // Use portal to render modal at document body level
+  if (!mounted) return null
+
+  return createPortal(modalContent, document.body)
+}
