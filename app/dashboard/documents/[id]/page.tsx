@@ -3,19 +3,19 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import DocumentDetail from './DocumentDetail'
 
-export const metadata = {
-  title: 'Document Details | Document Controller',
-}
+export const metadata = { title: 'Document Details | Document Controller' }
 
-interface PageProps {
-  params: { id: string }
-}
+interface PageProps { params: { id: string } }
 
 function LoadingSkeleton() {
   return (
     <div className="animate-pulse space-y-6">
       <div className="h-8 w-64 bg-slate-200 rounded"></div>
-      <div className="card p-6"><div className="space-y-4">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-4 w-full bg-slate-200 rounded"></div>)}</div></div>
+      <div className="card p-6">
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-4 w-full bg-slate-200 rounded"></div>)}
+        </div>
+      </div>
     </div>
   )
 }
@@ -25,6 +25,7 @@ async function getDocumentWithDetails(id: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   
+  // Get user roles
   const { data: userRoles } = await supabase.from('user_roles').select('roles (name)').eq('user_id', user.id)
   const roleNames: string[] = []
   if (userRoles) {
@@ -37,49 +38,85 @@ async function getDocumentWithDetails(id: string) {
     }
   }
   
+  // Get document from view
   const { data: document, error } = await supabase.from('documents_with_details').select('*').eq('id', id).single()
   if (error || !document) return null
   
-  const { data: assignmentsRaw } = await supabase
+  // Get assignments - fetch separately then get profiles
+  const { data: rawAssignments } = await supabase
     .from('document_assignments')
-    .select('id, user_id, role_type, sequence_order, is_completed, completed_at, due_date, assignment_notes, profiles (id, full_name, email)')
+    .select('*')
     .eq('document_id', id)
     .order('role_type')
     .order('sequence_order')
   
-  const assignments = (assignmentsRaw || []).map(a => ({
-    id: a.id as string,
-    user_id: a.user_id as string,
-    role_type: a.role_type as string,
-    sequence_order: a.sequence_order as number,
-    is_completed: a.is_completed as boolean,
-    completed_at: a.completed_at as string | null,
-    due_date: a.due_date as string | null,
-    assignment_notes: a.assignment_notes as string | null,
-    profiles: Array.isArray(a.profiles) ? a.profiles[0] || null : a.profiles as { id: string; full_name: string | null; email: string | null } | null,
-  }))
+  // Build assignments with profiles
+  const assignments = []
+  for (const a of (rawAssignments || [])) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .eq('id', a.user_id)
+      .single()
+    
+    assignments.push({
+      id: a.id as string,
+      user_id: a.user_id as string,
+      role_type: a.role_type as string,
+      sequence_order: (a.sequence_order || 1) as number,
+      is_completed: (a.is_completed || false) as boolean,
+      completed_at: a.completed_at as string | null,
+      due_date: a.due_date as string | null,
+      assignment_notes: a.assignment_notes as string | null,
+      profiles: profile,
+    })
+  }
   
-  const { data: affectedDeptsRaw } = await supabase.from('affected_departments').select('departments (id, name, code)').eq('document_id', id)
-  const affectedDepartments = (affectedDeptsRaw || []).map(ad => {
-    const dept = ad.departments
-    if (Array.isArray(dept)) return dept[0] || null
-    return dept as { id: string; name: string; code: string | null } | null
-  })
+  // Get affected departments
+  const { data: affectedRaw } = await supabase
+    .from('affected_departments')
+    .select('department_id')
+    .eq('document_id', id)
   
-  const { data: timeline } = await supabase.from('document_timeline').select('*').eq('document_id', id).order('created_at', { ascending: false })
+  const affectedDepartments = []
+  for (const ad of (affectedRaw || [])) {
+    const { data: dept } = await supabase
+      .from('departments')
+      .select('id, name, code')
+      .eq('id', ad.department_id)
+      .single()
+    if (dept) affectedDepartments.push(dept)
+  }
   
-  const { data: commentsRaw } = await supabase
-    .from('document_comments')
-    .select('id, content, created_at, profiles (id, full_name, email)')
+  // Get timeline
+  const { data: timeline } = await supabase
+    .from('document_timeline')
+    .select('*')
     .eq('document_id', id)
     .order('created_at', { ascending: false })
   
-  const comments = (commentsRaw || []).map(c => ({
-    id: c.id as string,
-    content: c.content as string,
-    created_at: c.created_at as string,
-    profiles: Array.isArray(c.profiles) ? c.profiles[0] || null : c.profiles as { id: string; full_name: string | null; email: string | null } | null,
-  }))
+  // Get comments with profiles
+  const { data: commentsRaw } = await supabase
+    .from('document_comments')
+    .select('id, content, created_at, user_id')
+    .eq('document_id', id)
+    .order('created_at', { ascending: false })
+  
+  const comments = []
+  for (const c of (commentsRaw || [])) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .eq('id', c.user_id)
+      .single()
+    
+    comments.push({
+      id: c.id as string,
+      content: c.content as string,
+      created_at: c.created_at as string,
+      profiles: profile,
+    })
+  }
   
   return {
     document: {
