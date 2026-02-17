@@ -262,9 +262,18 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       })
     })
     
-    if (assignments.length > 0) {
-      const { error: assignError } = await supabase.from('document_assignments').insert(assignments)
-      if (assignError) console.error('Error creating assignments:', assignError)
+     if (assignments.length > 0) {
+      const { data: insertedAssignments, error: assignError } = await supabase
+        .from('document_assignments')
+        .insert(assignments)
+        .select()
+      
+      if (assignError) {
+        console.error('Error creating assignments:', assignError)
+        // Don't fail the whole operation, but log it
+      } else {
+        console.log('Created assignments:', insertedAssignments?.length)
+      }
     }
     
     // Create initial timeline entry with CORRECT ENUM value
