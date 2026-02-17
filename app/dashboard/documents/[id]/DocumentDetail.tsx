@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileText, Calendar, Building2, Users, Clock, CheckCircle, XCircle, AlertTriangle, ExternalLink, Hash, MessageSquare, Send, ClipboardCheck, Info, Pencil, CalendarClock, Star, AlertCircle as AlertIcon, ThumbsUp, ThumbsDown } from 'lucide-react'
-import { assignDocumentNumber, submitReview, approveDocument, rejectDocument, addComment, updateDocument, getDocumentForEdit, getFormOptions } from './actions'
+import { ArrowLeft, FileText, Calendar, Building2, Users, Clock, CheckCircle, XCircle, AlertTriangle, ExternalLink, Hash, MessageSquare, Send, ClipboardCheck, Info, Pencil, CalendarClock, Star, AlertCircle as AlertIcon, ThumbsUp, ThumbsDown, Ban, Lock } from 'lucide-react'
+import { assignDocumentNumber, submitReview, approveDocument, rejectDocument, addComment, updateDocument, getDocumentForEdit, getFormOptions, closeDocument, cancelDocument } from './actions'
 
 interface DocumentData {
   id: string
@@ -20,9 +20,14 @@ interface DocumentData {
   document_type_code: string | null
   department_name: string | null
   created_by_name: string | null
+  created_by: string | null
   published_at: string | null
   expiry_date: string | null
+  effective_date: string | null
   rejection_reason: string | null
+  closed_at: string | null
+  cancellation_reason: string | null
+  cancelled_at: string | null
 }
 
 interface Assignment {
@@ -104,10 +109,14 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showCloseModal, setShowCloseModal] = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null)
   const [reviewComment, setReviewComment] = useState('')
   const [reviewStatus, setReviewStatus] = useState<'submitted' | 'requested_changes' | 'approved'>('submitted')
   const [rejectReason, setRejectReason] = useState('')
+  const [closeComment, setCloseComment] = useState('')
+  const [cancelReason, setCancelReason] = useState('')
   const [newComment, setNewComment] = useState('')
 
   const [editTitle, setEditTitle] = useState('')
@@ -125,6 +134,9 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
   const isBPM = currentUser.roles.includes('BPM')
   const canEdit = isAdmin || isBPM
   const canAssignDocNumber = canEdit && doc.document_number.startsWith('PENDING-')
+  const isCreator = doc.created_by === currentUser.id
+  const canClose = (isAdmin || isBPM || isCreator) && doc.status === 'Approved'
+  const canCancel = (isAdmin || isBPM || isCreator) && ['Initiation', 'Review', 'Waiting Approval'].includes(doc.status)
   
   const safeAssignments = assignments || []
   const safeReviews = reviews || []
@@ -177,7 +189,8 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
       'Waiting Approval': 'bg-orange-100 text-orange-700',
       'Approved': 'bg-emerald-100 text-emerald-700',
       'Rejected': 'bg-red-100 text-red-700',
-      'Closed': 'bg-slate-100 text-slate-700'
+      'Closed': 'bg-indigo-100 text-indigo-700',
+      'Cancel': 'bg-slate-100 text-slate-500'
     }
     return colors[s] || 'bg-slate-100 text-slate-700'
   }
@@ -345,6 +358,35 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
     setIsLoading(false)
   }
 
+  const handleCloseDoc = async () => {
+    setIsLoading(true)
+    const result = await closeDocument(doc.id, closeComment)
+    if (result.success) {
+      showMsg('success', result.message || 'Document closed')
+      setShowCloseModal(false)
+      setCloseComment('')
+      router.refresh()
+    } else {
+      showMsg('error', result.error || 'Failed')
+    }
+    setIsLoading(false)
+  }
+
+  const handleCancelDoc = async () => {
+    if (!cancelReason.trim()) return
+    setIsLoading(true)
+    const result = await cancelDocument(doc.id, cancelReason)
+    if (result.success) {
+      showMsg('success', result.message || 'Document cancelled')
+      setShowCancelModal(false)
+      setCancelReason('')
+      router.refresh()
+    } else {
+      showMsg('error', result.error || 'Failed')
+    }
+    setIsLoading(false)
+  }
+
   const handleAddComment = async () => {
     if (!newComment.trim()) return
     setIsLoading(true)
@@ -385,6 +427,28 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
           <div>
             <p className="font-medium">Document Expiring Soon</p>
             <p className="text-sm">This document will expire on {formatDate(doc.expiry_date)}. Consider initiating a revision.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Cancelled Banner */}
+      {doc.status === 'Cancel' && (
+        <div className="px-4 py-3 rounded-lg bg-slate-100 text-slate-700 border border-slate-300 flex items-start gap-3">
+          <Ban className="h-5 w-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Document Cancelled</p>
+            <p className="text-sm">This document was cancelled on {formatDate(doc.cancelled_at)}.{doc.cancellation_reason && ` Reason: ${doc.cancellation_reason}`}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Closed Banner */}
+      {doc.status === 'Closed' && (
+        <div className="px-4 py-3 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-start gap-3">
+          <Lock className="h-5 w-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Document Closed & Enacted</p>
+            <p className="text-sm">This document was officially enacted on {formatDate(doc.closed_at)}.</p>
           </div>
         </div>
       )}
@@ -436,6 +500,16 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
                 <XCircle className="h-4 w-4" /> Reject
               </button>
             </>
+          )}
+          {canClose && (
+            <button onClick={() => setShowCloseModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-500 rounded-lg hover:bg-indigo-600">
+              <Lock className="h-4 w-4" /> Mark as Closed
+            </button>
+          )}
+          {canCancel && (
+            <button onClick={() => setShowCancelModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
+              <Ban className="h-4 w-4" /> Cancel Document
+            </button>
           )}
           {doc.draft_link && (
             <a href={doc.draft_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
@@ -489,9 +563,18 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
             </div>
 
             {/* Published and Expiry Dates */}
-            {doc.status === 'Approved' && (doc.published_at || doc.expiry_date) && (
+            {(doc.status === 'Approved' || doc.status === 'Closed') && (doc.published_at || doc.expiry_date || doc.effective_date || doc.closed_at) && (
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {doc.effective_date && (
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 uppercase">Effective Date</label>
+                      <p className="mt-1 text-sm text-emerald-600 font-medium flex items-center gap-1">
+                        <CheckCircle className="h-4 w-4" />
+                        {formatDate(doc.effective_date)}
+                      </p>
+                    </div>
+                  )}
                   {doc.published_at && (
                     <div>
                       <label className="text-xs font-medium text-slate-500 uppercase">Published Date</label>
@@ -511,6 +594,15 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
                         {formatDate(doc.expiry_date)}
                         {isExpired && ' (Expired)'}
                         {isExpiringSoon && !isExpired && ' (Expiring Soon)'}
+                      </p>
+                    </div>
+                  )}
+                  {doc.closed_at && (
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 uppercase">Closed/Enacted Date</label>
+                      <p className="mt-1 text-sm text-indigo-600 font-medium flex items-center gap-1">
+                        <Lock className="h-4 w-4" />
+                        {formatDate(doc.closed_at)}
                       </p>
                     </div>
                   )}
@@ -947,6 +1039,64 @@ export default function DocumentDetail({ document: doc, assignments, reviews, ap
             <div className="flex gap-2">
               <button onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button>
               <button onClick={handleRejectDoc} disabled={isLoading || !rejectReason.trim()} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Reject'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close Modal */}
+      {showCloseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => { setShowCloseModal(false); setCloseComment('') }}></div>
+          <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Lock className="h-5 w-5 text-indigo-500" /> Mark Document as Closed</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              This will officially enact the document. The document has been approved and is ready to be closed.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Comments (optional)</label>
+              <textarea 
+                value={closeComment} 
+                onChange={(e) => setCloseComment(e.target.value)} 
+                placeholder="Add any closing remarks..." 
+                rows={3} 
+                className="w-full px-4 py-2 border rounded-lg resize-none" 
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowCloseModal(false); setCloseComment('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button>
+              <button onClick={handleCloseDoc} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-indigo-500 rounded-lg disabled:opacity-50">
+                {isLoading ? 'Closing...' : 'Close & Enact'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Document Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => { setShowCancelModal(false); setCancelReason('') }}></div>
+          <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Ban className="h-5 w-5 text-slate-500" /> Cancel Document</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              This will permanently cancel the document. This action cannot be undone.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Reason <span className="text-red-500">*</span></label>
+              <textarea 
+                value={cancelReason} 
+                onChange={(e) => setCancelReason(e.target.value)} 
+                placeholder="Why is this document being cancelled?" 
+                rows={4} 
+                className="w-full px-4 py-2 border rounded-lg resize-none" 
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowCancelModal(false); setCancelReason('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Go Back</button>
+              <button onClick={handleCancelDoc} disabled={isLoading || !cancelReason.trim()} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-slate-600 rounded-lg disabled:opacity-50">
+                {isLoading ? 'Cancelling...' : 'Cancel Document'}
+              </button>
             </div>
           </div>
         </div>
