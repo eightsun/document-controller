@@ -774,6 +774,219 @@ export async function markAllNotificationsRead(): Promise<ActionResponse> {
   }
 }
 
+// Close document (finalize after approval)
+export async function closeDocument(documentId: string, comment?: string): Promise<ActionResponse> {
+  try {
+    const { user, roles, error: authError } = await getCurrentUserWithRoles()
+    if (!user || authError) return { success: false, error: authError || 'Not authenticated' }
+
+    const supabase = await createClient()
+    
+    // Get document info
+    const { data: document } = await supabase
+      .from('documents')
+      .select('id, title, status, created_by, effective_date, expiry_date, published_at')
+      .eq('id', documentId)
+      .single()
+    
+    if (!document) return { success: false, error: 'Document not found' }
+    
+    // Check status
+    if (document.status !== 'Approved') {
+      return { success: false, error: `Cannot close document with status "${document.status}". Document must be "Approved" first.` }
+    }
+    
+    // Check permissions: creator, Admin, or BPM
+    const isAdmin = roles.includes('Admin')
+    const isBPM = roles.includes('BPM')
+    const isCreator = document.created_by === user.id
+    
+    if (!isAdmin && !isBPM && !isCreator) {
+      return { success: false, error: 'Only the document creator, Admin, or BPM can close this document' }
+    }
+
+    const userProfile = await getUserProfile(user.id)
+    const userName = userProfile?.full_name || userProfile?.email || 'A user'
+    
+    const now = new Date()
+    
+    // Ensure effective_date and expiry_date are set
+    const effectiveDate = document.effective_date || now.toISOString().split('T')[0]
+    const publishedAt = document.published_at || now.toISOString()
+    let expiryDate = document.expiry_date
+    
+    if (!expiryDate) {
+      const expiry = new Date(effectiveDate)
+      expiry.setFullYear(expiry.getFullYear() + 3)
+      expiryDate = expiry.toISOString().split('T')[0]
+    }
+    
+    // Update document to Closed
+    const { error: updateError } = await supabase.from('documents').update({
+      status: 'Closed',
+      closed_at: now.toISOString(),
+      closed_by: user.id,
+      effective_date: effectiveDate,
+      expiry_date: expiryDate,
+      published_at: publishedAt,
+      updated_at: now.toISOString(),
+    }).eq('id', documentId)
+    
+    if (updateError) {
+      console.error('Error closing document:', updateError)
+      return { success: false, error: `Failed to close document: ${updateError.message}` }
+    }
+
+    // Add comment if provided
+    if (comment && comment.trim()) {
+      await supabase.from('document_comments').insert({
+        document_id: documentId,
+        user_id: user.id,
+        content: `Document closed: ${comment.trim()}`,
+      })
+    }
+
+    // Add timeline entry
+    await supabase.from('document_timeline').insert({
+      document_id: documentId,
+      event_type: 'closed',
+      event_title: 'Document Closed & Enacted',
+      event_description: comment 
+        ? `${userName} closed the document. Comment: ${comment.substring(0, 100)}${comment.length > 100 ? '...' : ''}`
+        : `${userName} closed the document. The document is now officially enacted.`,
+      performed_by: user.id,
+    })
+
+    // Notify document creator if closed by someone else
+    if (document.created_by && document.created_by !== user.id) {
+      await createNotification(
+        document.created_by,
+        documentId,
+        'document_approved', // Reusing type since it's a positive outcome
+        'Document Closed',
+        `"${document.title}" has been closed and officially enacted by ${userName}.`
+      )
+    }
+
+    revalidatePath(`/dashboard/documents/${documentId}`)
+    revalidatePath('/dashboard/documents')
+    return { success: true, message: 'Document closed and officially enacted!' }
+  } catch (error) {
+    console.error('Error in closeDocument:', error)
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+// Cancel document
+export async function cancelDocument(documentId: string, reason: string): Promise<ActionResponse> {
+  try {
+    const { user, roles, error: authError } = await getCurrentUserWithRoles()
+    if (!user || authError) return { success: false, error: authError || 'Not authenticated' }
+    if (!reason || !reason.trim()) return { success: false, error: 'Cancellation reason is required' }
+
+    const supabase = await createClient()
+    
+    // Get document info
+    const { data: document } = await supabase
+      .from('documents')
+      .select('id, title, status, created_by')
+      .eq('id', documentId)
+      .single()
+    
+    if (!document) return { success: false, error: 'Document not found' }
+    
+    // Check status - can only cancel documents that are not yet approved/rejected/closed
+    const allowedStatuses = ['Initiation', 'Review', 'Waiting Approval']
+    if (!allowedStatuses.includes(document.status)) {
+      return { success: false, error: `Cannot cancel document with status "${document.status}". Only documents in Initiation, Review, or Waiting Approval can be cancelled.` }
+    }
+    
+    // Check permissions: creator, Admin, or BPM
+    const isAdmin = roles.includes('Admin')
+    const isBPM = roles.includes('BPM')
+    const isCreator = document.created_by === user.id
+    
+    if (!isAdmin && !isBPM && !isCreator) {
+      return { success: false, error: 'Only the document creator, Admin, or BPM can cancel this document' }
+    }
+
+    const userProfile = await getUserProfile(user.id)
+    const userName = userProfile?.full_name || userProfile?.email || 'A user'
+    
+    const now = new Date()
+    
+    // Update document to Cancel
+    const { error: updateError } = await supabase.from('documents').update({
+      status: 'Cancel',
+      cancelled_at: now.toISOString(),
+      cancelled_by: user.id,
+      cancellation_reason: reason.trim(),
+      updated_at: now.toISOString(),
+    }).eq('id', documentId)
+    
+    if (updateError) {
+      console.error('Error cancelling document:', updateError)
+      return { success: false, error: `Failed to cancel document: ${updateError.message}` }
+    }
+
+    // Add comment
+    await supabase.from('document_comments').insert({
+      document_id: documentId,
+      user_id: user.id,
+      content: `Document cancelled: ${reason.trim()}`,
+    })
+
+    // Add timeline entry
+    await supabase.from('document_timeline').insert({
+      document_id: documentId,
+      event_type: 'cancelled',
+      event_title: 'Document Cancelled',
+      event_description: `${userName} cancelled the document. Reason: ${reason.substring(0, 200)}${reason.length > 200 ? '...' : ''}`,
+      performed_by: user.id,
+    })
+
+    // Notify all assigned users
+    const { data: assignments } = await supabase
+      .from('document_assignments')
+      .select('user_id')
+      .eq('document_id', documentId)
+    
+    if (assignments && assignments.length > 0) {
+      const userIds = assignments
+        .map(a => a.user_id)
+        .filter(id => id !== user.id && id !== document.created_by)
+      
+      if (userIds.length > 0) {
+        await notifyUsers(
+          userIds,
+          documentId,
+          'document_rejected', // Reusing type for cancellation notification
+          'Document Cancelled',
+          `"${document.title}" has been cancelled by ${userName}.`
+        )
+      }
+    }
+
+    // Notify document creator if cancelled by someone else
+    if (document.created_by && document.created_by !== user.id) {
+      await createNotification(
+        document.created_by,
+        documentId,
+        'document_rejected',
+        'Document Cancelled',
+        `"${document.title}" has been cancelled. Reason: ${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}`
+      )
+    }
+
+    revalidatePath(`/dashboard/documents/${documentId}`)
+    revalidatePath('/dashboard/documents')
+    return { success: true, message: 'Document cancelled' }
+  } catch (error) {
+    console.error('Error in cancelDocument:', error)
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
 export interface UpdateDocumentData {
   title?: string
   description?: string
