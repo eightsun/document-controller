@@ -72,6 +72,31 @@ async function getDocumentWithDetails(id: string) {
     })
   }
   
+  // Get reviews
+  const { data: rawReviews } = await supabase
+    .from('document_reviews')
+    .select('*')
+    .eq('document_id', id)
+    .order('review_date', { ascending: false })
+
+  const reviews = []
+  for (const r of (rawReviews || [])) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .eq('id', r.reviewer_id)
+      .single()
+    
+    reviews.push({
+      id: r.id as string,
+      reviewer_id: r.reviewer_id as string,
+      review_status: r.review_status as string,
+      comments: r.comments as string | null,
+      review_date: r.review_date as string,
+      profiles: profile,
+    })
+  }
+  
   // Get affected departments
   const { data: affectedRaw } = await supabase
     .from('affected_departments')
@@ -137,6 +162,7 @@ async function getDocumentWithDetails(id: string) {
       expiry_date: document.expiry_date as string | null,
     },
     assignments,
+    reviews,
     affectedDepartments,
     timeline: (timeline || []).map(t => ({
       id: t.id as string,
