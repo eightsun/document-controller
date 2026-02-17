@@ -96,6 +96,31 @@ async function getDocumentWithDetails(id: string) {
       profiles: profile,
     })
   }
+
+  // Get approvals
+  const { data: rawApprovals } = await supabase
+    .from('document_approvals')
+    .select('*')
+    .eq('document_id', id)
+    .order('approval_date', { ascending: false })
+
+  const approvals = []
+  for (const a of (rawApprovals || [])) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .eq('id', a.approver_id)
+      .single()
+    
+    approvals.push({
+      id: a.id as string,
+      approver_id: a.approver_id as string,
+      decision: a.decision as string,
+      comments: a.comments as string | null,
+      approval_date: a.approval_date as string,
+      profiles: profile,
+    })
+  }
   
   // Get affected departments
   const { data: affectedRaw } = await supabase
@@ -160,9 +185,11 @@ async function getDocumentWithDetails(id: string) {
       created_by_name: document.created_by_name as string | null,
       published_at: document.published_at as string | null,
       expiry_date: document.expiry_date as string | null,
+      rejection_reason: (document.rejection_reason as string | null) || null,
     },
     assignments,
     reviews,
+    approvals,
     affectedDepartments,
     timeline: (timeline || []).map(t => ({
       id: t.id as string,
