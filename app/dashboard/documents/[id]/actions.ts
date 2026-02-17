@@ -10,6 +10,123 @@ interface ActionResponse<T = unknown> {
   data?: T
 }
 
+// ============ EMAIL NOTIFICATION HELPER ============
+const RESEND_API_KEY = process.env.RESEND_API_KEY
+const FROM_EMAIL = process.env.FROM_EMAIL || 'Document Controller <onboarding@resend.dev>'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+async function sendEmailNotification(
+  to: string,
+  subject: string,
+  templateType: 'assignment' | 'review' | 'approval' | 'ready',
+  data: {
+    documentTitle: string
+    documentNumber: string
+    documentId: string
+    personName?: string
+    roleType?: string
+    decision?: string
+    comments?: string
+  }
+) {
+  if (!RESEND_API_KEY) {
+    console.log('Email not sent (RESEND_API_KEY not configured):', { to, subject })
+    return
+  }
+
+  const templates: Record<string, string> = {
+    assignment: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px 8px 0 0;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">📋 ${data.roleType === 'approver' ? 'Approval' : 'Review'} Assignment</h1>
+        </div>
+        <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+          <p style="color: #334155; font-size: 16px;">You have been assigned as a <strong>${data.roleType}</strong> for:</p>
+          <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 0 0 4px 0; color: #1e293b; font-size: 18px; font-weight: bold;">${data.documentTitle}</p>
+            <p style="margin: 0; color: #64748b; font-size: 14px; font-family: monospace;">${data.documentNumber}</p>
+          </div>
+          <p style="color: #64748b; font-size: 14px;">Assigned by: ${data.personName}</p>
+          <a href="${APP_URL}/dashboard/documents/${data.documentId}" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin-top: 16px;">View Document →</a>
+        </div>
+      </div>
+    `,
+    review: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 20px; border-radius: 8px 8px 0 0;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">📝 Review Submitted</h1>
+        </div>
+        <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+          <p style="color: #334155; font-size: 16px;">A review has been submitted for your document:</p>
+          <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 0 0 4px 0; color: #1e293b; font-size: 18px; font-weight: bold;">${data.documentTitle}</p>
+            <p style="margin: 0; color: #64748b; font-size: 14px; font-family: monospace;">${data.documentNumber}</p>
+          </div>
+          <p style="color: #64748b; font-size: 14px;"><strong>Reviewer:</strong> ${data.personName}</p>
+          ${data.comments ? `<p style="color: #64748b; font-size: 14px;"><strong>Comments:</strong> ${data.comments}</p>` : ''}
+          <a href="${APP_URL}/dashboard/documents/${data.documentId}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin-top: 16px;">View Document →</a>
+        </div>
+      </div>
+    `,
+    approval: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, ${data.decision === 'approved' ? '#10b981, #059669' : '#ef4444, #dc2626'}); padding: 20px; border-radius: 8px 8px 0 0;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">${data.decision === 'approved' ? '✅ Document Approved' : '❌ Document Rejected'}</h1>
+        </div>
+        <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+          <p style="color: #334155; font-size: 16px;">Your document has been <strong>${data.decision}</strong>:</p>
+          <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 0 0 4px 0; color: #1e293b; font-size: 18px; font-weight: bold;">${data.documentTitle}</p>
+            <p style="margin: 0; color: #64748b; font-size: 14px; font-family: monospace;">${data.documentNumber}</p>
+          </div>
+          <p style="color: #64748b; font-size: 14px;"><strong>By:</strong> ${data.personName}</p>
+          ${data.comments ? `<p style="color: #64748b; font-size: 14px;"><strong>Comments:</strong> ${data.comments}</p>` : ''}
+          <a href="${APP_URL}/dashboard/documents/${data.documentId}" style="display: inline-block; background: ${data.decision === 'approved' ? '#10b981' : '#ef4444'}; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin-top: 16px;">View Document →</a>
+        </div>
+      </div>
+    `,
+    ready: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 20px; border-radius: 8px 8px 0 0;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">⏰ Ready for Your Approval</h1>
+        </div>
+        <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+          <p style="color: #334155; font-size: 16px;">All reviews completed. This document is ready for your approval:</p>
+          <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 0 0 4px 0; color: #1e293b; font-size: 18px; font-weight: bold;">${data.documentTitle}</p>
+            <p style="margin: 0; color: #64748b; font-size: 14px; font-family: monospace;">${data.documentNumber}</p>
+          </div>
+          <a href="${APP_URL}/dashboard/documents/${data.documentId}" style="display: inline-block; background: #f59e0b; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin-top: 16px;">Review & Approve →</a>
+        </div>
+      </div>
+    `,
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to: [to],
+        subject,
+        html: templates[templateType],
+      }),
+    })
+    if (response.ok) {
+      console.log('Email sent to:', to)
+    } else {
+      console.error('Email failed:', await response.text())
+    }
+  } catch (error) {
+    console.error('Email error:', error)
+  }
+}
+// ============ END EMAIL HELPER ============
+
 const COMPANY_CODE = 'MRT'
 
 async function getCurrentUserWithRoles() {
@@ -292,6 +409,23 @@ export async function submitReview(
           'Document Ready for Approval',
           `"${document.title}" has completed all reviews and is waiting for your approval.`
         )
+
+        // Send email to all approvers
+        for (const approverId of approverIds) {
+          const approverProfile = await getUserProfile(approverId)
+          if (approverProfile?.email) {
+            await sendEmailNotification(
+              approverProfile.email,
+              `Ready for Approval: ${document.title}`,
+              'ready',
+              {
+                documentTitle: document.title,
+                documentNumber: document.document_number || '',
+                documentId: documentId,
+              }
+            )
+          }
+        }
       }
     }
 
@@ -312,6 +446,23 @@ export async function submitReview(
         'Review Submitted',
         `${reviewerName} has submitted a review for "${document.title}" (${statusLabels[reviewStatus]}).`
       )
+
+      // Send email to document creator
+      const creatorProfile = await getUserProfile(document.created_by)
+      if (creatorProfile?.email) {
+        await sendEmailNotification(
+          creatorProfile.email,
+          `Review Submitted: ${document.title}`,
+          'review',
+          {
+            documentTitle: document.title,
+            documentNumber: document.document_number || '',
+            documentId: documentId,
+            personName: reviewerName,
+            comments: comments || '',
+          }
+        )
+      }
     }
 
     revalidatePath(`/dashboard/documents/${documentId}`)
@@ -456,6 +607,24 @@ export async function approveDocument(documentId: string, assignmentId: string, 
           'Document Approved',
           `"${document.title}" has been fully approved and published.`
         )
+
+        // Send email to document creator
+        const creatorProfile = await getUserProfile(document.created_by)
+        if (creatorProfile?.email) {
+          await sendEmailNotification(
+            creatorProfile.email,
+            `Document Approved: ${document.title}`,
+            'approval',
+            {
+              documentTitle: document.title,
+              documentNumber: document.document_number || '',
+              documentId: documentId,
+              personName: approverName,
+              decision: 'approved',
+              comments: comment || '',
+            }
+          )
+        }
       }
 
       // Notify all reviewers
@@ -582,6 +751,24 @@ export async function rejectDocument(documentId: string, assignmentId: string, r
         'Document Rejected',
         `"${document.title}" has been rejected by ${approverName}. Reason: ${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}`
       )
+
+      // Send email to document creator
+      const creatorProfile = await getUserProfile(document.created_by)
+      if (creatorProfile?.email) {
+        await sendEmailNotification(
+          creatorProfile.email,
+          `Document Rejected: ${document.title}`,
+          'approval',
+          {
+            documentTitle: document.title,
+            documentNumber: document.document_number || '',
+            documentId: documentId,
+            personName: approverName,
+            decision: 'rejected',
+            comments: reason,
+          }
+        )
+      }
     }
 
     // Notify all reviewers
