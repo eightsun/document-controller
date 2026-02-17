@@ -63,18 +63,22 @@ export function useUserRoles(): UserRolesResult {
           setError('Failed to fetch roles')
           console.error('Error fetching roles:', rolesError)
         } else {
-          const roleNames = userRoles
-            ?.map((ur: { roles: { name: string } | null }) => ur.roles?.name)
-            .filter(Boolean) as string[]
-          setRoles(roleNames || [])
+          // Extract role names from the query result
+          const roleNames: string[] = []
+          if (userRoles) {
+            for (const ur of userRoles) {
+              const roles = ur.roles as { name: string } | { name: string }[] | null
+              if (roles) {
+                if (Array.isArray(roles)) {
+                  roles.forEach(r => roleNames.push(r.name))
+                } else {
+                  roleNames.push(roles.name)
+                }
+              }
+            }
+          }
+          setRoles(roleNames)
         }
-      } catch (err) {
-        console.error('Unexpected error:', err)
-        setError('An unexpected error occurred')
-      } finally {
-        setIsLoading(false)
-      }
-    }
 
     fetchUserRoles()
   }, [])
