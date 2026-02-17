@@ -179,12 +179,24 @@ export async function approveDocument(documentId: string, assignmentId: string, 
     const allApproversComplete = allApprovers && allApprovers.length > 0 && allApprovers.every(a => a.is_completed)
     
     if (allApproversComplete) {
-      await supabase.from('documents').update({ status: 'Approved', approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', documentId)
+      // Calculate published date and expiry date (3 years from now)
+      const publishedAt = new Date()
+      const expiryDate = new Date(publishedAt)
+      expiryDate.setFullYear(expiryDate.getFullYear() + 3)
+      
+      await supabase.from('documents').update({ 
+        status: 'Approved', 
+        approved_at: publishedAt.toISOString(),
+        published_at: publishedAt.toISOString(),
+        expiry_date: expiryDate.toISOString().split('T')[0], // Store as date only
+        updated_at: publishedAt.toISOString() 
+      }).eq('id', documentId)
+      
       await supabase.from('document_timeline').insert({
         document_id: documentId,
         event_type: 'approved',
-        event_title: 'Document Approved',
-        event_description: 'All approvers have approved.',
+        event_title: 'Document Approved & Published',
+        event_description: `All approvers have approved. Document expires on ${expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.`,
         performed_by: user.id,
       })
     }
