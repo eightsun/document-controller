@@ -283,7 +283,7 @@ export async function submitReview(
     // Get document info
     const { data: document } = await supabase
       .from('documents')
-      .select('id, title, status, created_by')
+      .select('id, title, document_number, status, created_by')
       .eq('id', documentId)
       .single()
     
@@ -500,7 +500,7 @@ export async function approveDocument(documentId: string, assignmentId: string, 
     // Check document status
     const { data: document } = await supabase
       .from('documents')
-      .select('id, title, status, created_by')
+      .select('id, title, document_number, status, created_by')
       .eq('id', documentId)
       .single()
     
@@ -681,7 +681,7 @@ export async function rejectDocument(documentId: string, assignmentId: string, r
     // Get document info
     const { data: document } = await supabase
       .from('documents')
-      .select('id, title, status, created_by')
+      .select('id, title, document_number, status, created_by')
       .eq('id', documentId)
       .single()
 
@@ -1076,7 +1076,7 @@ export async function cancelDocument(documentId: string, reason: string): Promis
     // Get document info
     const { data: document } = await supabase
       .from('documents')
-      .select('id, title, status, created_by')
+      .select('id, title, document_number, status, created_by')
       .eq('id', documentId)
       .single()
     
