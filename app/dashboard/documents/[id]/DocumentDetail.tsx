@@ -22,6 +22,7 @@ interface DocumentData {
   created_by_name: string | null
   published_at: string | null
   expiry_date: string | null
+  rejection_reason: string | null
 }
 
 interface Assignment {
@@ -42,6 +43,15 @@ interface Review {
   review_status: string
   comments: string | null
   review_date: string
+  profiles: { id: string; full_name: string | null; email: string | null } | null
+}
+
+interface Approval {
+  id: string
+  approver_id: string
+  decision: string
+  comments: string | null
+  approval_date: string
   profiles: { id: string; full_name: string | null; email: string | null } | null
 }
 
@@ -70,6 +80,7 @@ interface Props {
   document: DocumentData
   assignments: Assignment[]
   reviews: Review[]
+  approvals: Approval[]
   affectedDepartments: (Department | null)[]
   timeline: TimelineEntry[]
   comments: Comment[]
@@ -82,7 +93,7 @@ interface FormOptions {
   users: Array<{ id: string; full_name: string | null; email: string | null }>
 }
 
-export default function DocumentDetail({ document: doc, assignments, reviews, affectedDepartments, timeline, comments, currentUser }: Props) {
+export default function DocumentDetail({ document: doc, assignments, reviews, approvals, affectedDepartments, timeline, comments, currentUser }: Props) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -117,6 +128,7 @@ export default function DocumentDetail({ document: doc, assignments, reviews, af
   
   const safeAssignments = assignments || []
   const safeReviews = reviews || []
+  const safeApprovals = approvals || []
   const myAssignments = safeAssignments.filter(a => a.user_id === currentUser.id)
   const myPendingReviews = myAssignments.filter(a => !a.is_completed && a.role_type === 'reviewer')
   const myPendingApprovals = myAssignments.filter(a => !a.is_completed && a.role_type === 'approver')
@@ -592,6 +604,96 @@ export default function DocumentDetail({ document: doc, assignments, reviews, af
                     <span key={r.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-xs">
                       <Clock className="h-3 w-3" />
                       {r.profiles?.full_name || r.profiles?.email || 'Unknown'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Approvals Section */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <CheckCircle className="h-5 w-5 text-primary-500" /> Approvals
+              </h2>
+              {approvers.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all ${approvers.every(a => a.is_completed) ? 'bg-emerald-500' : 'bg-orange-500'}`}
+                      style={{ width: `${approvers.length > 0 ? Math.round((approvers.filter(a => a.is_completed).length / approvers.length) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <span className="text-sm text-slate-500">{approvers.filter(a => a.is_completed).length}/{approvers.length}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Rejection Banner */}
+            {doc.status === 'Rejected' && doc.rejection_reason && (
+              <div className="mb-4 p-4 rounded-lg bg-red-50 border border-red-200">
+                <div className="flex items-start gap-3">
+                  <XCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-red-700">Document Rejected</p>
+                    <p className="text-sm text-red-600 mt-1">{doc.rejection_reason}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {safeApprovals.length > 0 ? (
+              <div className="space-y-3">
+                {safeApprovals.map((approval) => (
+                  <div key={approval.id} className={`p-4 rounded-lg border ${approval.decision === 'approved' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${approval.decision === 'approved' ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                          {approval.decision === 'approved' ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">
+                            {approval.profiles?.full_name || approval.profiles?.email || 'Unknown'}
+                          </p>
+                          <p className="text-xs text-slate-500">{formatDateTime(approval.approval_date)}</p>
+                        </div>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${approval.decision === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                        {approval.decision === 'approved' ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                        {approval.decision === 'approved' ? 'Approved' : 'Rejected'}
+                      </span>
+                    </div>
+                    {approval.comments && (
+                      <div className="mt-3 pl-11">
+                        <p className={`text-sm rounded-lg p-3 ${approval.decision === 'approved' ? 'text-emerald-700 bg-emerald-100/50' : 'text-red-700 bg-red-100/50'}`}>
+                          {approval.comments}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-slate-50 rounded-lg">
+                <CheckCircle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">
+                  {approvers.length > 0 
+                    ? (allReviewersCompleted ? 'No approval decisions yet' : 'Waiting for all reviews to complete')
+                    : 'No approvers assigned'}
+                </p>
+              </div>
+            )}
+
+            {/* Pending Approvers */}
+            {approvers.filter(a => !a.is_completed).length > 0 && allReviewersCompleted && doc.status === 'Waiting Approval' && (
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <p className="text-xs font-medium text-slate-500 uppercase mb-2">Pending Approvals</p>
+                <div className="flex flex-wrap gap-2">
+                  {approvers.filter(a => !a.is_completed).map(a => (
+                    <span key={a.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-orange-700 text-xs">
+                      <Clock className="h-3 w-3" />
+                      {a.profiles?.full_name || a.profiles?.email || 'Unknown'}
                     </span>
                   ))}
                 </div>
