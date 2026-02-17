@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useForm } from 'react-hook-form'
 import { X, Loader2, Building2 } from 'lucide-react'
 import type { Department, DepartmentFormData } from '@/types/database'
@@ -19,6 +20,7 @@ export default function DepartmentForm({
   isLoading = false,
 }: DepartmentFormProps) {
   const isEditing = !!department
+  const [mounted, setMounted] = useState(false)
 
   const {
     register,
@@ -36,6 +38,7 @@ export default function DepartmentForm({
   })
 
   useEffect(() => {
+    setMounted(true)
     if (department) {
       reset({
         name: department.name,
@@ -67,208 +70,175 @@ export default function DepartmentForm({
 
   const watchName = watch('name')
 
-  return (
-    <>
-      {/* Full screen overlay */}
-      <div 
+  // Modal content
+  const modalContent = (
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 99999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* Backdrop */}
+      <div
         style={{
-          position: 'fixed',
+          position: 'absolute',
           top: 0,
           left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
           backdropFilter: 'blur(4px)',
-          zIndex: 9998,
         }}
         onClick={onCancel}
       />
-      
-      {/* Modal container - centered */}
+
+      {/* Modal */}
       <div
         style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 9999,
+          position: 'relative',
           width: '100%',
-          maxWidth: '500px',
-          maxHeight: '90vh',
-          padding: '16px',
+          maxWidth: '480px',
+          maxHeight: 'calc(100vh - 32px)',
+          backgroundColor: 'white',
+          borderRadius: '16px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
-        <div 
-          className="bg-white rounded-2xl shadow-2xl overflow-hidden"
-          style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+        {/* Header */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 24px',
+            borderBottom: '1px solid #e2e8f0',
+            backgroundColor: 'white',
+            flexShrink: 0,
+          }}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-white flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
-                <Building2 className="h-5 w-5 text-primary-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-800">
-                  {isEditing ? 'Edit Department' : 'Add New Department'}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  {isEditing ? 'Update department information' : 'Create a new department'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={onCancel}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div
+              style={{
+                width: '40px',
+                height: '40px',
+                backgroundColor: '#eef2ff',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <X className="h-5 w-5" />
-            </button>
+              <Building2 style={{ width: '20px', height: '20px', color: '#4f46e5' }} />
+            </div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#1e293b' }}>
+                {isEditing ? 'Edit Department' : 'Add New Department'}
+              </h2>
+              <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>
+                {isEditing ? 'Update department information' : 'Create a new department'}
+              </p>
+            </div>
           </div>
-
-          {/* Form - scrollable */}
-          <form 
-            onSubmit={handleSubmit(handleFormSubmit)} 
-            className="p-6 overflow-y-auto flex-1"
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '8px',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: 'transparent',
+              cursor: 'pointer',
+              color: '#94a3b8',
+            }}
           >
-            <div className="space-y-5">
-              {/* Department Name */}
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Department Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="name"
-                  type="text"
-                  placeholder="e.g., Information Technology"
-                  className={`w-full px-4 py-2.5 border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/20 ${
-                    errors.name
-                      ? 'border-red-300 focus:border-red-500'
-                      : 'border-slate-300 focus:border-primary-500'
-                  }`}
-                  {...register('name', {
-                    required: 'Department name is required',
-                    minLength: { value: 2, message: 'Name must be at least 2 characters' },
-                    maxLength: { value: 255, message: 'Name must be less than 255 characters' },
-                  })}
-                />
-                {errors.name && (
-                  <p className="mt-1.5 text-sm text-red-500">{errors.name.message}</p>
-                )}
-              </div>
+            <X style={{ width: '20px', height: '20px' }} />
+          </button>
+        </div>
 
-              {/* Department Code */}
-              <div>
-                <label htmlFor="code" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Department Code
-                </label>
-                <input
-                  id="code"
-                  type="text"
-                  placeholder="e.g., IT"
-                  className={`w-full px-4 py-2.5 border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/20 uppercase ${
-                    errors.code
-                      ? 'border-red-300 focus:border-red-500'
-                      : 'border-slate-300 focus:border-primary-500'
-                  }`}
-                  {...register('code', {
-                    maxLength: { value: 50, message: 'Code must be less than 50 characters' },
-                    pattern: {
-                      value: /^[A-Za-z0-9_-]*$/,
-                      message: 'Code can only contain letters, numbers, hyphens, and underscores',
-                    },
-                  })}
-                />
-                <p className="mt-1.5 text-xs text-slate-500">
-                  Short code for document numbering (e.g., IT, FIN, HR)
+        {/* Form */}
+        <form
+          onSubmit={handleSubmit(handleFormSubmit)}
+          style={{
+            padding: '24px',
+            overflowY: 'auto',
+            flex: 1,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Department Name */}
+            <div>
+              <label
+                htmlFor="name"
+                style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  color: '#374151',
+                  marginBottom: '6px',
+                }}
+              >
+                Department Name <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                id="name"
+                type="text"
+                placeholder="e.g., Information Technology"
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  border: `1px solid ${errors.name ? '#fca5a5' : '#d1d5db'}`,
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+                {...register('name', {
+                  required: 'Department name is required',
+                  minLength: { value: 2, message: 'Name must be at least 2 characters' },
+                  maxLength: { value: 255, message: 'Name must be less than 255 characters' },
+                })}
+              />
+              {errors.name && (
+                <p style={{ marginTop: '6px', fontSize: '14px', color: '#ef4444' }}>
+                  {errors.name.message}
                 </p>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Description
-                </label>
-                <textarea
-                  id="description"
-                  rows={3}
-                  placeholder="Brief description of the department..."
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 resize-none"
-                  {...register('description', {
-                    maxLength: { value: 500, message: 'Description must be less than 500 characters' },
-                  })}
-                />
-              </div>
-
-              {/* Active Status */}
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div>
-                  <label htmlFor="is_active" className="text-sm font-medium text-slate-700">
-                    Active Status
-                  </label>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Inactive departments won&apos;t appear in dropdowns
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    id="is_active"
-                    type="checkbox"
-                    className="sr-only peer"
-                    {...register('is_active')}
-                  />
-                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500"></div>
-                </label>
-              </div>
-
-              {/* Preview */}
-              {watchName && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
-                    Preview
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-100">
-                      <Building2 className="h-5 w-5 text-primary-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-slate-800">{watchName}</p>
-                      <p className="text-xs text-slate-500">
-                        {watch('code')?.toUpperCase() || 'No code'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
               )}
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={onCancel}
-                disabled={isLoading}
-                className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+            {/* Department Code */}
+            <div>
+              <label
+                htmlFor="code"
+                style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  color: '#374151',
+                  marginBottom: '6px',
+                }}
               >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="px-4 py-2.5 text-sm font-medium text-white bg-primary-500 rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {isEditing ? 'Updating...' : 'Creating...'}
-                  </>
-                ) : (
-                  <>{isEditing ? 'Update Department' : 'Create Department'}</>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </>
-  )
-}
+                Department Code
+              </label>
+              <input
+                id="code"
+                type="text"
+                placeholder="e.g., IT"
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  textTransf
