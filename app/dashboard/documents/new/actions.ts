@@ -37,7 +37,7 @@ export interface CreateDocumentData {
 
 export interface AssignDocumentNumberData {
   document_id: string
-  document_number?: string // If empty, auto-generate
+  document_number?: string
 }
 
 // ============================================================================
@@ -211,7 +211,7 @@ export async function getUsersByRole(roleName: string): Promise<ActionResponse<U
 }
 
 // ============================================================================
-// Get All Active Users (for selection)
+// Get All Active Users
 // ============================================================================
 export async function getAllActiveUsers(): Promise<ActionResponse<UserOption[]>> {
   try {
@@ -277,14 +277,12 @@ export async function generateDocumentNumber(
   try {
     const supabase = await createClient()
     
-    // Get department code
     const { data: department } = await supabase
       .from('departments')
       .select('code')
       .eq('id', departmentId)
       .single()
     
-    // Get document type code
     const { data: documentType } = await supabase
       .from('document_types')
       .select('code')
@@ -299,7 +297,6 @@ export async function generateDocumentNumber(
     const docTypeCode = documentType.code.substring(0, 3).toUpperCase().padEnd(3, 'X')
     const prefix = `${COMPANY_CODE}-${deptCode}-${docTypeCode}`
     
-    // Get the latest document number with this prefix
     const { data: latestDoc } = await supabase
       .from('documents')
       .select('document_number')
@@ -331,13 +328,12 @@ export async function generateDocumentNumber(
 // Validate Document Number Format
 // ============================================================================
 function validateDocumentNumberFormat(docNumber: string): boolean {
-  // Format: XXX-XXX-XXX-NNN (e.g., MRT-AST-PLC-001)
   const pattern = /^[A-Z]{3}-[A-Z]{3}-[A-Z]{3}-\d{3}$/
   return pattern.test(docNumber)
 }
 
 // ============================================================================
-// Create Document (Document Number = "Waiting Document Verification")
+// Create Document
 // ============================================================================
 export async function createDocument(data: CreateDocumentData): Promise<ActionResponse<{ id: string }>> {
   try {
@@ -363,7 +359,6 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       return { success: false, error: 'SharePoint link is required' }
     }
     
-    // Validate SharePoint link format
     if (!data.sharepoint_link.includes('sharepoint.com') && !data.sharepoint_link.startsWith('http')) {
       return { success: false, error: 'Please provide a valid SharePoint link' }
     }
@@ -402,6 +397,7 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
         draft_link: data.sharepoint_link.trim(),
         status: 'Initiation',
         version: '1.0',
+        revision_number: 0,
         target_approval_date: data.target_approval_date,
         created_by: userId,
       })
@@ -431,7 +427,7 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       }
     }
     
-    // Create document assignments
+    // Create document assignments with CORRECT column names
     const assignments: Array<{
       document_id: string
       user_id: string
@@ -440,7 +436,7 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       assigned_by: string
     }> = []
     
-    // Add MQS Reps (submitters) - default to current user if none selected
+    // Add MQS Reps (submitters)
     const mqsRepsIds = data.mqs_reps_ids.length > 0 ? data.mqs_reps_ids : [userId]
     mqsRepsIds.forEach((id, index) => {
       assignments.push({
@@ -521,7 +517,6 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
 
 // ============================================================================
 // Assign Document Number (BPM Only)
-// Can provide manual number or auto-generate
 // ============================================================================
 export async function assignDocumentNumber(
   data: AssignDocumentNumberData
@@ -534,7 +529,6 @@ export async function assignDocumentNumber(
 
     const supabase = await createClient()
     
-    // Get document details
     const { data: document, error: docError } = await supabase
       .from('documents')
       .select('id, title, department_id, document_type_id, document_number')
@@ -548,10 +542,8 @@ export async function assignDocumentNumber(
     let documentNumber: string
     
     if (data.document_number && data.document_number.trim()) {
-      // Manual document number provided
       documentNumber = data.document_number.trim().toUpperCase()
       
-      // Validate format
       if (!validateDocumentNumberFormat(documentNumber)) {
         return { 
           success: false, 
@@ -559,7 +551,6 @@ export async function assignDocumentNumber(
         }
       }
       
-      // Check for duplicates
       const { data: existing } = await supabase
         .from('documents')
         .select('id')
@@ -571,7 +562,6 @@ export async function assignDocumentNumber(
         return { success: false, error: 'Document number already exists' }
       }
     } else {
-      // Auto-generate document number
       const generateResult = await generateDocumentNumber(
         document.department_id,
         document.document_type_id
@@ -584,7 +574,6 @@ export async function assignDocumentNumber(
       documentNumber = generateResult.data
     }
     
-    // Update document
     const { error: updateError } = await supabase
       .from('documents')
       .update({
@@ -598,7 +587,6 @@ export async function assignDocumentNumber(
       return { success: false, error: updateError.message }
     }
     
-    // Add timeline entry
     await supabase
       .from('document_timeline')
       .insert({
@@ -623,7 +611,7 @@ export async function assignDocumentNumber(
 }
 
 // ============================================================================
-// Preview Generated Document Number (for UI preview)
+// Preview Generated Document Number
 // ============================================================================
 export async function previewDocumentNumber(
   departmentId: string,
