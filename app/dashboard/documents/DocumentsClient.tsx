@@ -234,13 +234,13 @@ export default function DocumentsClient({ documents }: DocumentsClientProps) {
                         >
                           {doc.title}
                         </Link>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {doc.document_number === 'Waiting Document Verification' ? (
-                            <span className="text-amber-600 italic">{doc.document_number}</span>
-                          ) : (
-                            <span className="font-mono">{doc.document_number}</span>
-                          )}
-                        </p>
+                       <p className="text-xs text-slate-500 mt-0.5">
+  {doc.document_number.startsWith('PENDING-') ? (
+    <span className="text-amber-600 italic">Pending Verification</span>
+  ) : (
+    <span className="font-mono">{doc.document_number}</span>
+  )}
+</p>
                         <p className="text-xs text-slate-400 mt-0.5">
                           by {doc.created_by_name || 'Unknown'}
                         </p>
