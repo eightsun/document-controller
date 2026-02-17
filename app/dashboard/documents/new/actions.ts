@@ -385,11 +385,14 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
 
     const supabase = await createClient()
     
-    // Create document with "Waiting Document Verification" as document number
+    // Create document with temporary unique document number
+    // Format: PENDING-{timestamp} (will be replaced by BPM later)
+    const tempDocNumber = `PENDING-${Date.now()}`
+    
     const { data: newDocument, error: docError } = await supabase
       .from('documents')
       .insert({
-        document_number: 'Waiting Document Verification',
+        document_number: tempDocNumber,
         title: data.title.trim(),
         description: data.description?.trim() || null,
         document_type_id: data.document_type_id,
@@ -491,7 +494,7 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
       }
     }
     
-    // Create initial timeline entry (CORRECT COLUMN NAMES)
+    // Create initial timeline entry
     await supabase
       .from('document_timeline')
       .insert({
