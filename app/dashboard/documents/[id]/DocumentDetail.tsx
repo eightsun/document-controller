@@ -29,9 +29,6 @@ import {
   addComment
 } from './actions'
 
-// ============================================================================
-// Types
-// ============================================================================
 interface DocumentData {
   id: string
   document_number: string
@@ -106,9 +103,6 @@ interface DocumentDetailProps {
   }
 }
 
-// ============================================================================
-// Helper Components
-// ============================================================================
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     'Initiation': 'bg-amber-100 text-amber-700 border-amber-200',
@@ -154,7 +148,7 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
 }
 
 function AssignmentRow({ assignment, disabled }: { assignment: Assignment; disabled?: boolean }) {
-  const formatDateTime = (dateString: string | null) => {
+  const formatDT = (dateString: string | null) => {
     if (!dateString) return null
     return new Date(dateString).toLocaleString('en-US', {
       month: 'short',
@@ -187,17 +181,16 @@ function AssignmentRow({ assignment, disabled }: { assignment: Assignment; disab
             <RoleBadge role={assignment.role_type} />
             {assignment.is_completed && assignment.completed_at && (
               <span className="text-xs text-emerald-600">
-                Completed {formatDateTime(assignment.completed_at)}
+                Completed {formatDT(assignment.completed_at)}
               </span>
             )}
           </div>
         </div>
       </div>
-      
       {assignment.assignment_notes && (
         <div className="max-w-xs">
           <p className="text-xs text-slate-500 italic truncate" title={assignment.assignment_notes}>
-            &quot;{assignment.assignment_notes}&quot;
+            {assignment.assignment_notes}
           </p>
         </div>
       )}
@@ -205,9 +198,6 @@ function AssignmentRow({ assignment, disabled }: { assignment: Assignment; disab
   )
 }
 
-// ============================================================================
-// Main Component
-// ============================================================================
 export default function DocumentDetail({
   document,
   assignments,
@@ -220,28 +210,20 @@ export default function DocumentDetail({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  
-  // Document Number Assignment
   const [showDocNumberModal, setShowDocNumberModal] = useState(false)
   const [manualDocNumber, setManualDocNumber] = useState('')
-  
-  // Review/Approve modals
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null)
   const [reviewComment, setReviewComment] = useState('')
   const [rejectReason, setRejectReason] = useState('')
-  
-  // Comments
   const [newComment, setNewComment] = useState('')
 
-  // Check user permissions
   const isAdmin = currentUser.roles.includes('Admin')
   const isBPM = currentUser.roles.includes('BPM')
   const canAssignDocNumber = (isAdmin || isBPM) && document.document_number.startsWith('PENDING-')
   
-  // Get user's assignments
   const myAssignments = assignments.filter(a => a.user_id === currentUser.id)
   const myPendingReviews = myAssignments.filter(
     a => !a.is_completed && (a.role_type === 'SME' || a.role_type === 'BPM')
@@ -250,12 +232,10 @@ export default function DocumentDetail({
     a => !a.is_completed && a.role_type === 'Approver'
   )
   
-  // Check if all reviewers completed (for approvers)
   const allReviewersCompleted = assignments
     .filter(a => a.role_type === 'SME' || a.role_type === 'BPM')
     .every(a => a.is_completed)
   
-  // Group assignments by role
   const assignmentsByRole = {
     submitters: assignments.filter(a => a.role_type === 'Submitter'),
     sme: assignments.filter(a => a.role_type === 'SME'),
@@ -294,9 +274,6 @@ export default function DocumentDetail({
     setTimeout(() => { setSuccess(null); setError(null) }, 5000)
   }
 
-  // ============================================================================
-  // Handlers
-  // ============================================================================
   const handleAssignDocNumber = async (autoGenerate: boolean) => {
     setIsLoading(true)
     try {
@@ -400,12 +377,8 @@ export default function DocumentDetail({
     }
   }
 
-  // ============================================================================
-  // Render
-  // ============================================================================
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Alert Messages */}
       {(error || success) && (
         <div className={`px-4 py-3 rounded-lg flex items-center gap-3 ${
           error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -418,7 +391,6 @@ export default function DocumentDetail({
         </div>
       )}
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <Link
@@ -440,7 +412,6 @@ export default function DocumentDetail({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {/* Assign Document Number Button (BPM/Admin only) */}
           {canAssignDocNumber && (
             <button
               onClick={() => setShowDocNumberModal(true)}
@@ -451,7 +422,6 @@ export default function DocumentDetail({
             </button>
           )}
 
-          {/* Complete Review Button */}
           {myPendingReviews.length > 0 && (
             <button
               onClick={() => {
@@ -465,7 +435,6 @@ export default function DocumentDetail({
             </button>
           )}
 
-          {/* Approve/Reject Buttons (only if all reviewers completed) */}
           {myPendingApprovals.length > 0 && allReviewersCompleted && (
             <>
               <button
@@ -491,7 +460,6 @@ export default function DocumentDetail({
             </>
           )}
 
-          {/* SharePoint Link */}
           {document.draft_link && (
             
               href={document.draft_link}
@@ -506,7 +474,6 @@ export default function DocumentDetail({
         </div>
       </div>
 
-      {/* Waiting for Reviewers Notice (for Approvers) */}
       {myPendingApprovals.length > 0 && !allReviewersCompleted && (
         <div className="px-4 py-3 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 flex items-start gap-3">
           <Info className="h-5 w-5 flex-shrink-0 mt-0.5" />
@@ -520,9 +487,7 @@ export default function DocumentDetail({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Document Info */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Basic Info Card */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary-500" />
@@ -580,7 +545,6 @@ export default function DocumentDetail({
             )}
           </div>
 
-          {/* Affected Departments */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary-500" />
@@ -603,7 +567,6 @@ export default function DocumentDetail({
             </div>
           </div>
 
-          {/* Assignments */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <Users className="h-5 w-5 text-primary-500" />
@@ -611,7 +574,6 @@ export default function DocumentDetail({
             </h2>
 
             <div className="space-y-6">
-              {/* Submitters */}
               {assignmentsByRole.submitters.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-600 mb-2">Submitters (MQS Reps)</h3>
@@ -623,7 +585,6 @@ export default function DocumentDetail({
                 </div>
               )}
 
-              {/* SME Reviewers */}
               {assignmentsByRole.sme.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-600 mb-2">SME Reviewers</h3>
@@ -635,7 +596,6 @@ export default function DocumentDetail({
                 </div>
               )}
 
-              {/* BPM Reviewers */}
               {assignmentsByRole.bpm.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-600 mb-2">BPM Reviewers</h3>
@@ -647,7 +607,6 @@ export default function DocumentDetail({
                 </div>
               )}
 
-              {/* Approvers */}
               {assignmentsByRole.approvers.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-600 mb-2">Approvers</h3>
@@ -666,14 +625,12 @@ export default function DocumentDetail({
             </div>
           </div>
 
-          {/* Comments Section */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-primary-500" />
               Comments
             </h2>
 
-            {/* Add Comment */}
             <div className="flex gap-2 mb-4">
               <input
                 type="text"
@@ -692,28 +649,27 @@ export default function DocumentDetail({
               </button>
             </div>
 
-            {/* Comments List */}
             <div className="space-y-3">
               {comments.length > 0 ? (
-                comments.map((comment) => (
-                  <div key={comment.id} className="p-3 bg-slate-50 rounded-lg">
+                comments.map((c) => (
+                  <div key={c.id} className="p-3 bg-slate-50 rounded-lg">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm font-medium text-slate-800">
-                        {comment.profiles?.full_name || comment.profiles?.email || 'Unknown'}
+                        {c.profiles?.full_name || c.profiles?.email || 'Unknown'}
                       </span>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${
-                        comment.comment_type === 'Review' ? 'bg-blue-100 text-blue-700' :
-                        comment.comment_type === 'Approval' ? 'bg-emerald-100 text-emerald-700' :
-                        comment.comment_type === 'Rejection' ? 'bg-red-100 text-red-700' :
+                        c.comment_type === 'Review' ? 'bg-blue-100 text-blue-700' :
+                        c.comment_type === 'Approval' ? 'bg-emerald-100 text-emerald-700' :
+                        c.comment_type === 'Rejection' ? 'bg-red-100 text-red-700' :
                         'bg-slate-100 text-slate-600'
                       }`}>
-                        {comment.comment_type}
+                        {c.comment_type}
                       </span>
                       <span className="text-xs text-slate-400">
-                        {formatDateTime(comment.created_at)}
+                        {formatDateTime(c.created_at)}
                       </span>
                     </div>
-                    <p className="text-sm text-slate-700">{comment.comment}</p>
+                    <p className="text-sm text-slate-700">{c.comment}</p>
                   </div>
                 ))
               ) : (
@@ -723,7 +679,6 @@ export default function DocumentDetail({
           </div>
         </div>
 
-        {/* Right Column - Timeline */}
         <div className="space-y-6">
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
@@ -772,11 +727,6 @@ export default function DocumentDetail({
         </div>
       </div>
 
-      {/* ======================================================================== */}
-      {/* MODALS */}
-      {/* ======================================================================== */}
-
-      {/* Assign Document Number Modal */}
       {showDocNumberModal && (
         <Modal onClose={() => setShowDocNumberModal(false)}>
           <div className="p-6">
@@ -825,9 +775,8 @@ export default function DocumentDetail({
         </Modal>
       )}
 
-      {/* Complete Review Modal */}
       {showReviewModal && selectedAssignment && (
-        <Modal onClose={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }}>
+        <Modal onClose={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment(''); }}>
           <div className="p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <ClipboardCheck className="h-5 w-5 text-blue-500" />
@@ -853,7 +802,7 @@ export default function DocumentDetail({
 
             <div className="flex gap-2">
               <button
-                onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }}
+                onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment(''); }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 Cancel
@@ -870,9 +819,8 @@ export default function DocumentDetail({
         </Modal>
       )}
 
-      {/* Approve Modal */}
       {showApproveModal && selectedAssignment && (
-        <Modal onClose={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }}>
+        <Modal onClose={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment(''); }}>
           <div className="p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <CheckCircle className="h-5 w-5 text-emerald-500" />
@@ -898,7 +846,7 @@ export default function DocumentDetail({
 
             <div className="flex gap-2">
               <button
-                onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }}
+                onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment(''); }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 Cancel
@@ -915,9 +863,8 @@ export default function DocumentDetail({
         </Modal>
       )}
 
-      {/* Reject Modal */}
       {showRejectModal && selectedAssignment && (
-        <Modal onClose={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }}>
+        <Modal onClose={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason(''); }}>
           <div className="p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <XCircle className="h-5 w-5 text-red-500" />
@@ -944,7 +891,7 @@ export default function DocumentDetail({
 
             <div className="flex gap-2">
               <button
-                onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }}
+                onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason(''); }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 Cancel
