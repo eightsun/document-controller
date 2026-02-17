@@ -140,8 +140,8 @@ export default function DocumentForm({
         <div className="text-sm">
           <p className="font-medium">Document Number</p>
           <p className="text-blue-600">
-            Document number will be assigned as <strong>"Waiting Document Verification"</strong> until BPM verifies and assigns the official document number.
-          </p>
+  Document number will be shown as <strong>"Pending Verification"</strong> until BPM verifies and assigns the official document number.
+</p>
         </div>
       </div>
 
