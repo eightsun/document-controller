@@ -52,96 +52,87 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Get user profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('id', user?.id)
-    .single()
-
   const now = new Date()
   const todayStr = now.toISOString().split('T')[0]
   const future90Str = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-  // Get status counts using SQL function (or fallback to manual query)
+  // Run ALL queries in parallel for maximum performance
+  const [
+    profileResult,
+    statusCountsResult,
+    deptStatsResult,
+    expiringDocsResult,
+    myPendingReviewsResult,
+    myPendingApprovalsResult,
+    recentDocumentsResult,
+    // Get all documents for monthly trend calculation
+    allDocsResult,
+  ] = await Promise.all([
+    // Profile
+    supabase.from('profiles').select('full_name').eq('id', user?.id).single(),
+    
+    // Try SQL function for status counts
+    supabase.rpc('get_document_status_counts'),
+    
+    // Try SQL function for department stats
+    supabase.rpc('get_department_document_stats'),
+    
+    // Try SQL function for expiring documents
+    supabase.rpc('get_expiring_documents', { days_ahead: 90 }),
+    
+    // My pending reviews
+    supabase.from('document_assignments')
+      .select('document_id')
+      .eq('user_id', user?.id)
+      .eq('role_type', 'reviewer')
+      .eq('is_completed', false),
+    
+    // My pending approvals
+    supabase.from('document_assignments')
+      .select('document_id, documents!inner(status)')
+      .eq('user_id', user?.id)
+      .eq('role_type', 'approver')
+      .eq('is_completed', false)
+      .eq('documents.status', 'Waiting Approval'),
+    
+    // Recent documents
+    supabase.from('documents_with_details')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(5),
+    
+    // All documents for stats (if SQL functions fail)
+    supabase.from('documents')
+      .select('id, status, department_id, expiry_date, created_at, approved_at'),
+  ])
+
+  const profile = profileResult.data
+  const myPendingReviews = myPendingReviewsResult.data
+  const myPendingApprovals = myPendingApprovalsResult.data
+  const recentDocuments = recentDocumentsResult.data
+
+  // Process status counts
   let statusCounts: StatusCount[] = []
-  const { data: statusCountsRaw, error: statusError } = await supabase.rpc('get_document_status_counts')
-  
-  if (statusError || !statusCountsRaw) {
-    // Fallback: manual aggregation
-    const statuses = ['Initiation', 'Review', 'Waiting Approval', 'Approved', 'Closed', 'Rejected', 'Cancel']
-    for (const status of statuses) {
-      const { count } = await supabase
-        .from('documents')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', status)
-      statusCounts.push({ status, count: count || 0 })
-    }
-  } else {
-    statusCounts = (statusCountsRaw || []).map((s: { status: string; count: string | number }) => ({
+  if (statusCountsResult.data && !statusCountsResult.error) {
+    statusCounts = (statusCountsResult.data || []).map((s: { status: string; count: string | number }) => ({
       status: s.status,
       count: typeof s.count === 'string' ? parseInt(s.count, 10) : s.count
     }))
+  } else {
+    // Fallback: calculate from all docs
+    const allDocs = allDocsResult.data || []
+    const statusMap: Record<string, number> = {}
+    allDocs.forEach((d: { status: string }) => {
+      statusMap[d.status] = (statusMap[d.status] || 0) + 1
+    })
+    const statusOrder = ['Initiation', 'Review', 'Waiting Approval', 'Approved', 'Closed', 'Rejected', 'Cancel']
+    statusCounts = statusOrder.map(status => ({ status, count: statusMap[status] || 0 })).filter(s => s.count > 0)
   }
 
-  // Get department statistics using SQL function (or fallback)
+  // Process department stats
   let departmentStats: DepartmentStats[] = []
-  const { data: deptStatsRaw, error: deptError } = await supabase.rpc('get_department_document_stats')
-  
-  if (deptError || !deptStatsRaw) {
-    // Fallback: get departments and count manually
-    const { data: departments } = await supabase
-      .from('departments')
-      .select('id, name, code')
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('name')
-    
-    for (const dept of (departments || [])) {
-      const { count: draftCount } = await supabase
-        .from('documents')
-        .select('*', { count: 'exact', head: true })
-        .eq('department_id', dept.id)
-        .in('status', ['Initiation', 'Review', 'Waiting Approval'])
-      
-      const { count: validCount } = await supabase
-        .from('documents')
-        .select('*', { count: 'exact', head: true })
-        .eq('department_id', dept.id)
-        .in('status', ['Approved', 'Closed'])
-        .gte('expiry_date', todayStr)
-      
-      const { count: expiredCount } = await supabase
-        .from('documents')
-        .select('*', { count: 'exact', head: true })
-        .eq('department_id', dept.id)
-        .in('status', ['Approved', 'Closed'])
-        .lt('expiry_date', todayStr)
-      
-      const { count: publishedCount } = await supabase
-        .from('documents')
-        .select('*', { count: 'exact', head: true })
-        .eq('department_id', dept.id)
-        .in('status', ['Approved', 'Closed'])
-      
-      const { count: totalCount } = await supabase
-        .from('documents')
-        .select('*', { count: 'exact', head: true })
-        .eq('department_id', dept.id)
-      
-      departmentStats.push({
-        department_id: dept.id,
-        department_name: dept.name,
-        department_code: dept.code || '',
-        draft_count: draftCount || 0,
-        valid_count: validCount || 0,
-        expired_count: expiredCount || 0,
-        published_count: publishedCount || 0,
-        total_count: totalCount || 0,
-      })
-    }
-  } else {
-    departmentStats = (deptStatsRaw || []).map((d: Record<string, unknown>) => ({
+  if (deptStatsResult.data && !deptStatsResult.error) {
+    departmentStats = (deptStatsResult.data || []).map((d: Record<string, unknown>) => ({
       department_id: d.department_id as string,
       department_name: d.department_name as string,
       department_code: (d.department_code as string) || '',
@@ -151,13 +142,64 @@ export default async function DashboardPage() {
       published_count: typeof d.published_count === 'string' ? parseInt(d.published_count, 10) : (d.published_count as number) || 0,
       total_count: typeof d.total_count === 'string' ? parseInt(d.total_count, 10) : (d.total_count as number) || 0,
     }))
+  } else {
+    // Fallback: calculate from all docs + fetch departments
+    const { data: departments } = await supabase
+      .from('departments')
+      .select('id, name, code')
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('name')
+    
+    const allDocs = allDocsResult.data || []
+    const deptMap: Record<string, DepartmentStats> = {}
+    
+    ;(departments || []).forEach((dept: { id: string; name: string; code: string | null }) => {
+      deptMap[dept.id] = {
+        department_id: dept.id,
+        department_name: dept.name,
+        department_code: dept.code || '',
+        draft_count: 0,
+        valid_count: 0,
+        expired_count: 0,
+        published_count: 0,
+        total_count: 0,
+      }
+    })
+    
+    allDocs.forEach((doc: { department_id: string; status: string; expiry_date: string | null }) => {
+      if (!doc.department_id || !deptMap[doc.department_id]) return
+      const dept = deptMap[doc.department_id]
+      dept.total_count++
+      
+      if (['Initiation', 'Review', 'Waiting Approval'].includes(doc.status)) {
+        dept.draft_count++
+      }
+      if (['Approved', 'Closed'].includes(doc.status)) {
+        dept.published_count++
+        if (doc.expiry_date && doc.expiry_date < todayStr) {
+          dept.expired_count++
+        } else {
+          dept.valid_count++
+        }
+      }
+    })
+    
+    departmentStats = Object.values(deptMap).filter(d => d.total_count > 0)
   }
 
-  // Get expiring documents
+  // Process expiring documents
   let expiringDocuments: ExpiringDocument[] = []
-  const { data: expiringDocsRaw, error: expiringError } = await supabase.rpc('get_expiring_documents', { days_ahead: 90 })
-  
-  if (expiringError || !expiringDocsRaw) {
+  if (expiringDocsResult.data && !expiringDocsResult.error) {
+    expiringDocuments = (expiringDocsResult.data || []).map((d: Record<string, unknown>) => ({
+      id: d.id as string,
+      document_number: d.document_number as string,
+      title: d.title as string,
+      department_name: (d.department_name as string) || '',
+      expiry_date: d.expiry_date as string,
+      days_until_expiry: typeof d.days_until_expiry === 'string' ? parseInt(d.days_until_expiry, 10) : (d.days_until_expiry as number),
+    }))
+  } else {
     // Fallback
     const { data: expDocs } = await supabase
       .from('documents_with_details')
@@ -176,66 +218,30 @@ export default async function DashboardPage() {
       expiry_date: d.expiry_date as string,
       days_until_expiry: Math.ceil((new Date(d.expiry_date as string).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
     }))
-  } else {
-    expiringDocuments = (expiringDocsRaw || []).map((d: Record<string, unknown>) => ({
-      id: d.id as string,
-      document_number: d.document_number as string,
-      title: d.title as string,
-      department_name: (d.department_name as string) || '',
-      expiry_date: d.expiry_date as string,
-      days_until_expiry: typeof d.days_until_expiry === 'string' ? parseInt(d.days_until_expiry, 10) : (d.days_until_expiry as number),
-    }))
   }
 
-  // Get monthly trend - manual query (simpler)
+  // Calculate monthly trend from allDocs (no additional queries)
   const monthlyTrend: { month: string; created: number; approved: number }[] = []
+  const allDocs = allDocsResult.data || []
+  
   for (let i = 5; i >= 0; i--) {
     const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0)
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59)
     const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
     
-    const { count: createdCount } = await supabase
-      .from('documents')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', monthStart.toISOString())
-      .lte('created_at', monthEnd.toISOString())
+    const createdCount = allDocs.filter((d: { created_at: string }) => {
+      const createdDate = new Date(d.created_at)
+      return createdDate >= monthStart && createdDate <= monthEnd
+    }).length
     
-    const { count: approvedCount } = await supabase
-      .from('documents')
-      .select('*', { count: 'exact', head: true })
-      .gte('approved_at', monthStart.toISOString())
-      .lte('approved_at', monthEnd.toISOString())
+    const approvedCount = allDocs.filter((d: { approved_at: string | null }) => {
+      if (!d.approved_at) return false
+      const approvedDate = new Date(d.approved_at)
+      return approvedDate >= monthStart && approvedDate <= monthEnd
+    }).length
     
-    monthlyTrend.push({
-      month: monthLabel,
-      created: createdCount || 0,
-      approved: approvedCount || 0,
-    })
+    monthlyTrend.push({ month: monthLabel, created: createdCount, approved: approvedCount })
   }
-
-  // Pending my review
-  const { data: myPendingReviews } = await supabase
-    .from('document_assignments')
-    .select('document_id')
-    .eq('user_id', user?.id)
-    .eq('role_type', 'reviewer')
-    .eq('is_completed', false)
-
-  // Pending my approval
-  const { data: myPendingApprovals } = await supabase
-    .from('document_assignments')
-    .select('document_id, documents!inner(status)')
-    .eq('user_id', user?.id)
-    .eq('role_type', 'approver')
-    .eq('is_completed', false)
-    .eq('documents.status', 'Waiting Approval')
-
-  // Recent documents
-  const { data: recentDocuments } = await supabase
-    .from('documents_with_details')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(5)
 
   // Calculate totals from status counts
   const getStatusCount = (status: string) => statusCounts.find(s => s.status === status)?.count || 0
