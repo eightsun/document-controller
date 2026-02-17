@@ -16,7 +16,7 @@ async function checkAdminOrBPMRole(): Promise<{ allowed: boolean; userId: string
     return { allowed: false, userId: null, error: 'Not authenticated' }
   }
 
-  // Check if user has Admin or BPM role
+ // Check if user has Admin or BPM role
   const { data: userRoles, error: rolesError } = await supabase
     .from('user_roles')
     .select(`
@@ -29,7 +29,20 @@ async function checkAdminOrBPMRole(): Promise<{ allowed: boolean; userId: string
     return { allowed: false, userId: user.id, error: 'Failed to check permissions' }
   }
 
-  const roleNames = userRoles?.map((ur: { roles: { name: string } | null }) => ur.roles?.name) || []
+  // Extract role names from the query result
+  const roleNames: string[] = []
+  if (userRoles) {
+    for (const ur of userRoles) {
+      const roles = ur.roles as { name: string } | { name: string }[] | null
+      if (roles) {
+        if (Array.isArray(roles)) {
+          roles.forEach(r => roleNames.push(r.name))
+        } else {
+          roleNames.push(roles.name)
+        }
+      }
+    }
+  }
   const hasPermission = roleNames.includes('Admin') || roleNames.includes('BPM')
 
   if (!hasPermission) {
