@@ -340,38 +340,85 @@ export async function approveDocument(documentId: string, assignmentId: string, 
     if (!user || authError) return { success: false, error: authError || 'Not authenticated' }
 
     const supabase = await createClient()
+    
+    // Verify assignment
     const { data: assignment } = await supabase.from('document_assignments').select('*').eq('id', assignmentId).eq('document_id', documentId).eq('user_id', user.id).eq('role_type', 'approver').single()
     if (!assignment) return { success: false, error: 'Approval assignment not found' }
     if (assignment.is_completed) return { success: false, error: 'Already approved' }
     
+    // Check document status
+    const { data: document } = await supabase
+      .from('documents')
+      .select('id, title, status, created_by')
+      .eq('id', documentId)
+      .single()
+    
+    if (!document) return { success: false, error: 'Document not found' }
+    if (document.status !== 'Waiting Approval') {
+      return { success: false, error: `Cannot approve document with status "${document.status}". Document must be in "Waiting Approval" status.` }
+    }
+    
+    // Check all reviewers completed
     const { data: reviewers } = await supabase.from('document_assignments').select('is_completed').eq('document_id', documentId).eq('role_type', 'reviewer')
     const allReviewersComplete = !reviewers || reviewers.length === 0 || reviewers.every(r => r.is_completed)
     if (!allReviewersComplete) return { success: false, error: 'Cannot approve until all reviewers complete' }
 
-    // Get document info
-    const { data: document } = await supabase
-      .from('documents')
-      .select('id, title, created_by')
-      .eq('id', documentId)
+    // Check for existing approval (prevent duplicates)
+    const { data: existingApproval } = await supabase
+      .from('document_approvals')
+      .select('id')
+      .eq('document_id', documentId)
+      .eq('approver_id', user.id)
       .single()
+    
+    if (existingApproval) return { success: false, error: 'You have already submitted an approval decision for this document' }
 
     const approverProfile = await getUserProfile(user.id)
     const approverName = approverProfile?.full_name || approverProfile?.email || 'An approver'
-    
-    await supabase.from('document_assignments').update({ is_completed: true, completed_at: new Date().toISOString(), assignment_notes: comment || null }).eq('id', assignmentId)
-    
-    if (comment && comment.trim()) {
-      await supabase.from('document_comments').insert({ document_id: documentId, user_id: user.id, content: comment.trim() })
+
+    // Insert approval record
+    const { error: approvalError } = await supabase.from('document_approvals').insert({
+      document_id: documentId,
+      approver_id: user.id,
+      assignment_id: assignmentId,
+      decision: 'approved',
+      comments: comment?.trim() || null,
+      approval_date: new Date().toISOString(),
+    })
+
+    if (approvalError) {
+      console.error('Error inserting approval:', approvalError)
+      return { success: false, error: `Failed to record approval: ${approvalError.message}` }
     }
     
+    // Mark assignment as completed
+    await supabase.from('document_assignments').update({ 
+      is_completed: true, 
+      completed_at: new Date().toISOString(), 
+      assignment_notes: comment || null 
+    }).eq('id', assignmentId)
+    
+    // Add comment if provided
+    if (comment && comment.trim()) {
+      await supabase.from('document_comments').insert({ 
+        document_id: documentId, 
+        user_id: user.id, 
+        content: `Approval: ${comment.trim()}` 
+      })
+    }
+    
+    // Add timeline entry
     await supabase.from('document_timeline').insert({
       document_id: documentId,
       event_type: 'approved',
       event_title: 'Approval Received',
-      event_description: comment ? `${approverName} approved. Comment: ${comment.substring(0, 100)}` : `${approverName} approved the document.`,
+      event_description: comment 
+        ? `${approverName} approved. Comment: ${comment.substring(0, 100)}${comment.length > 100 ? '...' : ''}` 
+        : `${approverName} approved the document.`,
       performed_by: user.id,
     })
     
+    // Check if all approvers have completed
     const { data: allApprovers } = await supabase.from('document_assignments').select('is_completed').eq('document_id', documentId).eq('role_type', 'approver')
     const allApproversComplete = allApprovers && allApprovers.length > 0 && allApprovers.every(a => a.is_completed)
     
@@ -381,14 +428,17 @@ export async function approveDocument(documentId: string, assignmentId: string, 
       const expiryDate = new Date(publishedAt)
       expiryDate.setFullYear(expiryDate.getFullYear() + 3)
       
+      // Update document to Approved
       await supabase.from('documents').update({ 
         status: 'Approved', 
         approved_at: publishedAt.toISOString(),
         published_at: publishedAt.toISOString(),
         expiry_date: expiryDate.toISOString().split('T')[0],
+        effective_date: publishedAt.toISOString().split('T')[0],
         updated_at: publishedAt.toISOString() 
       }).eq('id', documentId)
       
+      // Add final approval timeline entry
       await supabase.from('document_timeline').insert({
         document_id: documentId,
         event_type: 'approved',
@@ -398,7 +448,7 @@ export async function approveDocument(documentId: string, assignmentId: string, 
       })
 
       // Notify document creator
-      if (document?.created_by) {
+      if (document.created_by) {
         await createNotification(
           document.created_by,
           documentId,
@@ -407,9 +457,27 @@ export async function approveDocument(documentId: string, assignmentId: string, 
           `"${document.title}" has been fully approved and published.`
         )
       }
+
+      // Notify all reviewers
+      const { data: reviewerAssignments } = await supabase
+        .from('document_assignments')
+        .select('user_id')
+        .eq('document_id', documentId)
+        .eq('role_type', 'reviewer')
+      
+      if (reviewerAssignments && reviewerAssignments.length > 0) {
+        const reviewerIds = reviewerAssignments.map(r => r.user_id).filter(id => id !== document.created_by)
+        await notifyUsers(
+          reviewerIds,
+          documentId,
+          'document_approved',
+          'Document Approved',
+          `"${document.title}" that you reviewed has been approved and published.`
+        )
+      }
     } else {
       // Notify document creator of partial approval
-      if (document?.created_by && document.created_by !== user.id) {
+      if (document.created_by && document.created_by !== user.id) {
         await createNotification(
           document.created_by,
           documentId,
@@ -422,8 +490,9 @@ export async function approveDocument(documentId: string, assignmentId: string, 
     
     revalidatePath(`/dashboard/documents/${documentId}`)
     revalidatePath('/dashboard/documents')
-    return { success: true, message: 'Document approved' }
+    return { success: true, message: allApproversComplete ? 'Document approved and published!' : 'Approval submitted successfully' }
   } catch (error) {
+    console.error('Error in approveDocument:', error)
     return { success: false, error: 'An unexpected error occurred' }
   }
 }
@@ -435,44 +504,114 @@ export async function rejectDocument(documentId: string, assignmentId: string, r
     if (!reason || !reason.trim()) return { success: false, error: 'Rejection reason is required' }
 
     const supabase = await createClient()
+    
+    // Verify assignment
     const { data: assignment } = await supabase.from('document_assignments').select('*').eq('id', assignmentId).eq('document_id', documentId).eq('user_id', user.id).eq('role_type', 'approver').single()
     if (!assignment) return { success: false, error: 'Approval assignment not found' }
 
     // Get document info
     const { data: document } = await supabase
       .from('documents')
-      .select('id, title, created_by')
+      .select('id, title, status, created_by')
       .eq('id', documentId)
       .single()
 
+    if (!document) return { success: false, error: 'Document not found' }
+    if (document.status !== 'Waiting Approval') {
+      return { success: false, error: `Cannot reject document with status "${document.status}". Document must be in "Waiting Approval" status.` }
+    }
+
+    // Check for existing approval decision (prevent duplicates)
+    const { data: existingApproval } = await supabase
+      .from('document_approvals')
+      .select('id')
+      .eq('document_id', documentId)
+      .eq('approver_id', user.id)
+      .single()
+    
+    if (existingApproval) return { success: false, error: 'You have already submitted an approval decision for this document' }
+
     const approverProfile = await getUserProfile(user.id)
     const approverName = approverProfile?.full_name || approverProfile?.email || 'An approver'
+
+    // Insert rejection record into document_approvals
+    const { error: approvalError } = await supabase.from('document_approvals').insert({
+      document_id: documentId,
+      approver_id: user.id,
+      assignment_id: assignmentId,
+      decision: 'rejected',
+      comments: reason.trim(),
+      approval_date: new Date().toISOString(),
+    })
+
+    if (approvalError) {
+      console.error('Error inserting rejection:', approvalError)
+      return { success: false, error: `Failed to record rejection: ${approvalError.message}` }
+    }
     
-    await supabase.from('documents').update({ status: 'Rejected', rejection_reason: reason.trim(), rejected_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', documentId)
-    await supabase.from('document_comments').insert({ document_id: documentId, user_id: user.id, content: `Rejected: ${reason.trim()}` })
+    // Update document status to Rejected
+    await supabase.from('documents').update({ 
+      status: 'Rejected', 
+      rejection_reason: reason.trim(), 
+      rejected_at: new Date().toISOString(), 
+      updated_at: new Date().toISOString() 
+    }).eq('id', documentId)
+
+    // Add rejection comment
+    await supabase.from('document_comments').insert({ 
+      document_id: documentId, 
+      user_id: user.id, 
+      content: `Rejected: ${reason.trim()}` 
+    })
+
+    // Add timeline entry
     await supabase.from('document_timeline').insert({
       document_id: documentId,
       event_type: 'rejected',
       event_title: 'Document Rejected',
-      event_description: `${approverName} rejected. Reason: ${reason.substring(0, 200)}`,
+      event_description: `${approverName} rejected the document. Reason: ${reason.substring(0, 200)}${reason.length > 200 ? '...' : ''}`,
       performed_by: user.id,
     })
 
     // Notify document creator
-    if (document?.created_by) {
+    if (document.created_by) {
       await createNotification(
         document.created_by,
         documentId,
         'document_rejected',
         'Document Rejected',
-        `"${document.title}" has been rejected. Reason: ${reason.substring(0, 100)}`
+        `"${document.title}" has been rejected by ${approverName}. Reason: ${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}`
       )
+    }
+
+    // Notify all reviewers
+    const { data: reviewerAssignments } = await supabase
+      .from('document_assignments')
+      .select('user_id')
+      .eq('document_id', documentId)
+      .eq('role_type', 'reviewer')
+    
+    if (reviewerAssignments && reviewerAssignments.length > 0) {
+      const reviewerIds = reviewerAssignments
+        .map(r => r.user_id)
+        .filter(id => id !== document.created_by && id !== user.id)
+      
+      if (reviewerIds.length > 0) {
+        await notifyUsers(
+          reviewerIds,
+          documentId,
+          'document_rejected',
+          'Document Rejected',
+          `"${document.title}" that you reviewed has been rejected.`
+        )
+      }
     }
     
     revalidatePath(`/dashboard/documents/${documentId}`)
     revalidatePath('/dashboard/documents')
     return { success: true, message: 'Document rejected' }
   } catch (error) {
+    console.error('Error in rejectDocument:', error)
     return { success: false, error: 'An unexpected error occurred' }
   }
 }
@@ -552,6 +691,48 @@ export async function getDocumentReviews(documentId: string): Promise<ActionResp
     }
 
     return { success: true, data: reviewsWithProfiles }
+  } catch (error) {
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+// Get approvals for a document
+export async function getDocumentApprovals(documentId: string): Promise<ActionResponse<Array<{
+  id: string
+  approver_id: string
+  approver_name: string | null
+  approver_email: string | null
+  decision: string
+  comments: string | null
+  approval_date: string
+}>>> {
+  try {
+    const supabase = await createClient()
+    
+    const { data: approvals, error } = await supabase
+      .from('document_approvals')
+      .select('*')
+      .eq('document_id', documentId)
+      .order('approval_date', { ascending: false })
+
+    if (error) return { success: false, error: error.message }
+
+    // Get profiles for each approval
+    const approvalsWithProfiles = []
+    for (const approval of (approvals || [])) {
+      const profile = await getUserProfile(approval.approver_id)
+      approvalsWithProfiles.push({
+        id: approval.id,
+        approver_id: approval.approver_id,
+        approver_name: profile?.full_name || null,
+        approver_email: profile?.email || null,
+        decision: approval.decision,
+        comments: approval.comments,
+        approval_date: approval.approval_date,
+      })
+    }
+
+    return { success: true, data: approvalsWithProfiles }
   } catch (error) {
     return { success: false, error: 'An unexpected error occurred' }
   }
