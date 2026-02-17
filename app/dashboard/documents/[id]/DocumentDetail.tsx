@@ -20,6 +20,9 @@ interface DocumentData {
   document_type_code: string | null
   department_name: string | null
   created_by_name: string | null
+  // NEW FIELDS
+  published_at: string | null
+  expiry_date: string | null
 }
 
 interface Assignment {
