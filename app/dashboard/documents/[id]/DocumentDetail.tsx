@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileText, Calendar, Building2, Users, Clock, CheckCircle, XCircle, AlertTriangle, ExternalLink, Hash, Loader2, MessageSquare, Send, ClipboardCheck, Info, Pencil } from 'lucide-react'
+import { ArrowLeft, FileText, Calendar, Building2, Users, Clock, CheckCircle, XCircle, AlertTriangle, ExternalLink, Hash, Loader2, MessageSquare, Send, ClipboardCheck, Info, Pencil, CalendarClock } from 'lucide-react'
 import { assignDocumentNumber, completeReview, approveDocument, rejectDocument, addComment, updateDocument, getDocumentForEdit, getFormOptions } from './actions'
 
 interface DocumentData {
@@ -20,7 +20,6 @@ interface DocumentData {
   document_type_code: string | null
   department_name: string | null
   created_by_name: string | null
-  // NEW FIELDS
   published_at: string | null
   expiry_date: string | null
 }
@@ -115,6 +114,12 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const reviewers = safeAssignments.filter(a => a.role_type === 'reviewer')
   const approvers = safeAssignments.filter(a => a.role_type === 'approver')
 
+  // Check expiry status
+  const isExpired = doc.expiry_date ? new Date(doc.expiry_date) < new Date() : false
+  const isExpiringSoon = doc.expiry_date ? 
+    new Date(doc.expiry_date) >= new Date() && 
+    new Date(doc.expiry_date) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) : false
+
   const formatDate = (d: string | null) => {
     if (!d) return '—'
     return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -142,7 +147,8 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
       'Review': 'bg-blue-100 text-blue-700',
       'Waiting Approval': 'bg-orange-100 text-orange-700',
       'Approved': 'bg-emerald-100 text-emerald-700',
-      'Rejected': 'bg-red-100 text-red-700'
+      'Rejected': 'bg-red-100 text-red-700',
+      'Closed': 'bg-slate-100 text-slate-700'
     }
     return colors[s] || 'bg-slate-100 text-slate-700'
   }
@@ -306,6 +312,27 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
         </div>
       )}
 
+      {/* Expiry Warning Banner */}
+      {isExpired && (
+        <div className="px-4 py-3 rounded-lg bg-red-50 text-red-700 border border-red-200 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Document Expired</p>
+            <p className="text-sm">This document expired on {formatDate(doc.expiry_date)}. Please initiate a revision.</p>
+          </div>
+        </div>
+      )}
+
+      {isExpiringSoon && !isExpired && (
+        <div className="px-4 py-3 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 flex items-start gap-3">
+          <CalendarClock className="h-5 w-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Document Expiring Soon</p>
+            <p className="text-sm">This document will expire on {formatDate(doc.expiry_date)}. Consider initiating a revision.</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <Link href="/dashboard/documents" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-2">
@@ -319,6 +346,12 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
               <span className="font-mono text-sm text-slate-600">{doc.document_number}</span>
             )}
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(doc.status)}`}>{doc.status}</span>
+            {isExpired && (
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-700">Expired</span>
+            )}
+            {isExpiringSoon && !isExpired && (
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-700">Expiring Soon</span>
+            )}
           </div>
         </div>
         
@@ -398,6 +431,37 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
                 <p className="mt-1 text-sm">{formatDateTime(doc.created_at)}</p>
               </div>
             </div>
+
+            {/* Published and Expiry Dates - Only show for Approved documents */}
+            {doc.status === 'Approved' && (doc.published_at || doc.expiry_date) && (
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {doc.published_at && (
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 uppercase">Published Date</label>
+                      <p className="mt-1 text-sm text-emerald-600 font-medium flex items-center gap-1">
+                        <CheckCircle className="h-4 w-4" />
+                        {formatDate(doc.published_at)}
+                      </p>
+                    </div>
+                  )}
+                  {doc.expiry_date && (
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 uppercase">Expiry Date (3 Years)</label>
+                      <p className={`mt-1 text-sm font-medium flex items-center gap-1 ${
+                        isExpired ? 'text-red-600' : isExpiringSoon ? 'text-amber-600' : 'text-slate-700'
+                      }`}>
+                        <CalendarClock className="h-4 w-4" />
+                        {formatDate(doc.expiry_date)}
+                        {isExpired && ' (Expired)'}
+                        {isExpiringSoon && !isExpired && ' (Expiring Soon)'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {doc.description && (
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <label className="text-xs font-medium text-slate-500 uppercase">Description</label>
