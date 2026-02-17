@@ -89,7 +89,6 @@ function EditProfileModal({
         backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         overflow: 'hidden', display: 'flex', flexDirection: 'column',
       }}>
-        {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '16px 24px', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', flexShrink: 0,
@@ -113,10 +112,8 @@ function EditProfileModal({
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Full Name */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Full Name <span style={{ color: '#ef4444' }}>*</span>
@@ -133,7 +130,6 @@ function EditProfileModal({
               />
             </div>
 
-            {/* Employee ID */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Employee ID
@@ -150,7 +146,6 @@ function EditProfileModal({
               />
             </div>
 
-            {/* Phone */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Phone
@@ -167,7 +162,6 @@ function EditProfileModal({
               />
             </div>
 
-            {/* Job Title */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Job Title
@@ -184,7 +178,6 @@ function EditProfileModal({
               />
             </div>
 
-            {/* Department */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Department
@@ -205,7 +198,6 @@ function EditProfileModal({
               </select>
             </div>
 
-            {/* Active Status */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0',
@@ -235,7 +227,6 @@ function EditProfileModal({
             </div>
           </div>
 
-          {/* Actions */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px',
             marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e2e8f0',
@@ -318,7 +309,6 @@ function ManageRolesModal({
         backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         overflow: 'hidden',
       }}>
-        {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '16px 24px', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white',
@@ -342,7 +332,6 @@ function ManageRolesModal({
           </button>
         </div>
 
-        {/* Roles List */}
         <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
           <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#64748b' }}>
             Select the roles to assign to this user:
@@ -375,7 +364,6 @@ function ManageRolesModal({
             ))}
           </div>
 
-          {/* Actions */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px',
             marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e2e8f0',
@@ -465,7 +453,6 @@ function CreateUserModal({
         backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         overflow: 'hidden', display: 'flex', flexDirection: 'column',
       }}>
-        {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '16px 24px', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', flexShrink: 0,
@@ -489,10 +476,8 @@ function CreateUserModal({
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Email */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Email <span style={{ color: '#ef4444' }}>*</span>
@@ -510,7 +495,6 @@ function CreateUserModal({
               />
             </div>
 
-            {/* Password */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Password <span style={{ color: '#ef4444' }}>*</span>
@@ -529,7 +513,6 @@ function CreateUserModal({
               />
             </div>
 
-            {/* Full Name */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Full Name <span style={{ color: '#ef4444' }}>*</span>
@@ -547,7 +530,6 @@ function CreateUserModal({
               />
             </div>
 
-            {/* Department */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Department
@@ -568,7 +550,6 @@ function CreateUserModal({
               </select>
             </div>
 
-            {/* Roles */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                 Roles
@@ -597,7 +578,6 @@ function CreateUserModal({
             </div>
           </div>
 
-          {/* Actions */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px',
             marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e2e8f0',
@@ -627,6 +607,109 @@ function CreateUserModal({
 }
 
 // ============================================================================
+// Action Menu Portal
+// ============================================================================
+function ActionMenuPortal({
+  user,
+  buttonRef,
+  onEdit,
+  onManageRoles,
+  onToggleStatus,
+  onClose,
+}: {
+  user: UserWithRoles
+  buttonRef: HTMLButtonElement | null
+  onEdit: () => void
+  onManageRoles: () => void
+  onToggleStatus: () => void
+  onClose: () => void
+}) {
+  const [mounted, setMounted] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+
+  useEffect(() => {
+    setMounted(true)
+    if (buttonRef) {
+      const rect = buttonRef.getBoundingClientRect()
+      setPosition({
+        top: rect.bottom + 4,
+        left: rect.right - 192,
+      })
+    }
+  }, [buttonRef])
+
+  const modalContent = (
+    <>
+      <div 
+        style={{ position: 'fixed', inset: 0, zIndex: 99998 }} 
+        onClick={onClose} 
+      />
+      <div
+        style={{
+          position: 'fixed',
+          top: position.top,
+          left: position.left,
+          zIndex: 99999,
+          width: '192px',
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+          border: '1px solid #e2e8f0',
+          padding: '4px 0',
+        }}
+      >
+        <button
+          onClick={onEdit}
+          style={{
+            width: '100%', padding: '8px 16px', textAlign: 'left', fontSize: '14px',
+            color: '#374151', backgroundColor: 'transparent', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '8px',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+        >
+          <Pencil style={{ width: '16px', height: '16px' }} />
+          Edit Profile
+        </button>
+        <button
+          onClick={onManageRoles}
+          style={{
+            width: '100%', padding: '8px 16px', textAlign: 'left', fontSize: '14px',
+            color: '#374151', backgroundColor: 'transparent', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '8px',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+        >
+          <Shield style={{ width: '16px', height: '16px' }} />
+          Manage Roles
+        </button>
+        <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+        <button
+          onClick={onToggleStatus}
+          style={{
+            width: '100%', padding: '8px 16px', textAlign: 'left', fontSize: '14px',
+            color: '#374151', backgroundColor: 'transparent', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '8px',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+        >
+          {user.is_active ? (
+            <><UserX style={{ width: '16px', height: '16px' }} /> Deactivate</>
+          ) : (
+            <><UserCheck style={{ width: '16px', height: '16px' }} /> Activate</>
+          )}
+        </button>
+      </div>
+    </>
+  )
+
+  if (!mounted) return null
+  return createPortal(modalContent, document.body)
+}
+
+// ============================================================================
 // Main Component
 // ============================================================================
 export default function UsersClient({ initialUsers, roles, departments }: UsersClientProps) {
@@ -638,6 +721,7 @@ export default function UsersClient({ initialUsers, roles, departments }: UsersC
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [actionMenuOpen, setActionMenuOpen] = useState<string | null>(null)
+  const [actionMenuButton, setActionMenuButton] = useState<HTMLButtonElement | null>(null)
   
   const [editingUser, setEditingUser] = useState<UserWithRoles | null>(null)
   const [managingRolesUser, setManagingRolesUser] = useState<UserWithRoles | null>(null)
@@ -775,6 +859,13 @@ export default function UsersClient({ initialUsers, roles, departments }: UsersC
     }
     return colors[role] || 'bg-slate-100 text-slate-700'
   }
+
+  const openActionMenu = (userId: string, button: HTMLButtonElement) => {
+    setActionMenuOpen(userId)
+    setActionMenuButton(button)
+  }
+
+  const getActiveUser = () => filteredUsers.find(u => u.id === actionMenuOpen)
 
   return (
     <>
@@ -918,47 +1009,12 @@ export default function UsersClient({ initialUsers, roles, departments }: UsersC
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="relative inline-block">
-                        <button
-                          onClick={() => setActionMenuOpen(actionMenuOpen === user.id ? null : user.id)}
-                          className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
-
-                        {actionMenuOpen === user.id && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setActionMenuOpen(null)} />
-                            <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-20 animate-fade-in">
-                              <button
-                                onClick={() => { setEditingUser(user); setActionMenuOpen(null) }}
-                                className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                              >
-                                <Pencil className="h-4 w-4" />
-                                Edit Profile
-                              </button>
-                              <button
-                                onClick={() => { setManagingRolesUser(user); setActionMenuOpen(null) }}
-                                className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                              >
-                                <Shield className="h-4 w-4" />
-                                Manage Roles
-                              </button>
-                              <hr className="my-1 border-slate-200" />
-                              <button
-                                onClick={() => handleToggleStatus(user)}
-                                className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                              >
-                                {user.is_active ? (
-                                  <><UserX className="h-4 w-4" /> Deactivate</>
-                                ) : (
-                                  <><UserCheck className="h-4 w-4" /> Activate</>
-                                )}
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                      <button
+                        onClick={(e) => openActionMenu(user.id, e.currentTarget)}
+                        className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -975,6 +1031,18 @@ export default function UsersClient({ initialUsers, roles, departments }: UsersC
           </div>
         )}
       </div>
+
+      {/* Action Menu Portal */}
+      {actionMenuOpen && getActiveUser() && (
+        <ActionMenuPortal
+          user={getActiveUser()!}
+          buttonRef={actionMenuButton}
+          onEdit={() => { setEditingUser(getActiveUser()!); setActionMenuOpen(null) }}
+          onManageRoles={() => { setManagingRolesUser(getActiveUser()!); setActionMenuOpen(null) }}
+          onToggleStatus={() => handleToggleStatus(getActiveUser()!)}
+          onClose={() => setActionMenuOpen(null)}
+        />
+      )}
 
       {/* Modals */}
       {editingUser && (
