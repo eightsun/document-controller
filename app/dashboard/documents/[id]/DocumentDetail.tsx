@@ -64,6 +64,12 @@ interface Props {
   currentUser: { id: string; roles: string[] }
 }
 
+interface FormOptions {
+  documentTypes: Array<{ id: string; name: string; code: string }>
+  departments: Array<{ id: string; name: string; code: string | null }>
+  users: Array<{ id: string; full_name: string | null; email: string | null }>
+}
+
 export default function DocumentDetail({ document: doc, assignments, affectedDepartments, timeline, comments, currentUser }: Props) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
@@ -80,7 +86,6 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const [rejectReason, setRejectReason] = useState('')
   const [newComment, setNewComment] = useState('')
 
-  // Edit form state
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editDocTypeId, setEditDocTypeId] = useState('')
@@ -90,36 +95,32 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
   const [editAffectedDepts, setEditAffectedDepts] = useState<string[]>([])
   const [editReviewerIds, setEditReviewerIds] = useState<string[]>([])
   const [editApproverIds, setEditApproverIds] = useState<string[]>([])
-  const [formOptions, setFormOptions] = useState<{
-    documentTypes: Array<{ id: string; name: string; code: string }>
-    departments: Array<{ id: string; name: string; code: string | null }>
-    users: Array<{ id: string; full_name: string | null; email: string | null }>
-  } | null>(null)
-
-  // Debug logging
-  console.log('=== DocumentDetail Component ===')
-  console.log('Assignments received:', assignments)
-  console.log('Assignment count:', assignments?.length || 0)
+  const [formOptions, setFormOptions] = useState<FormOptions | null>(null)
 
   const isAdmin = currentUser.roles.includes('Admin')
   const isBPM = currentUser.roles.includes('BPM')
   const canEdit = isAdmin || isBPM
   const canAssignDocNumber = canEdit && doc.document_number.startsWith('PENDING-')
-  const myAssignments = assignments?.filter(a => a.user_id === currentUser.id) || []
+  
+  const safeAssignments = assignments || []
+  const myAssignments = safeAssignments.filter(a => a.user_id === currentUser.id)
   const myPendingReviews = myAssignments.filter(a => !a.is_completed && a.role_type === 'reviewer')
   const myPendingApprovals = myAssignments.filter(a => !a.is_completed && a.role_type === 'approver')
-  
-  const reviewerAssignments = assignments?.filter(a => a.role_type === 'reviewer') || []
+  const reviewerAssignments = safeAssignments.filter(a => a.role_type === 'reviewer')
   const allReviewersCompleted = reviewerAssignments.length === 0 || reviewerAssignments.every(a => a.is_completed)
+  const submitters = safeAssignments.filter(a => a.role_type === 'submitter')
+  const reviewers = safeAssignments.filter(a => a.role_type === 'reviewer')
+  const approvers = safeAssignments.filter(a => a.role_type === 'approver')
+
+  const formatDate = (d: string | null) => {
+    if (!d) return '—'
+    return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  }
   
-  const submitters = assignments?.filter(a => a.role_type === 'submitter') || []
-  const reviewers = assignments?.filter(a => a.role_type === 'reviewer') || []
-  const approvers = assignments?.filter(a => a.role_type === 'approver') || []
-
-  console.log('Submitters:', submitters.length, 'Reviewers:', reviewers.length, 'Approvers:', approvers.length)
-
-  const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
-  const formatDateTime = (d: string | null) => d ? new Date(d).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+  const formatDateTime = (d: string | null) => {
+    if (!d) return '—'
+    return new Date(d).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
   
   const showMsg = (type: 'success' | 'error', msg: string) => {
     if (type === 'success') {
@@ -169,7 +170,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
     }
   }
 
-  async function openEditModal() {
+  const openEditModal = async () => {
     setIsLoading(true)
     const [docResult, optionsResult] = await Promise.all([
       getDocumentForEdit(doc.id),
@@ -194,7 +195,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
     setIsLoading(false)
   }
 
-  async function handleSaveEdit() {
+  const handleSaveEdit = async () => {
     setIsLoading(true)
     const result = await updateDocument(doc.id, {
       title: editTitle,
@@ -217,7 +218,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
     setIsLoading(false)
   }
 
-  async function handleAssignDocNum(auto: boolean) {
+  const handleAssignDocNum = async (auto: boolean) => {
     setIsLoading(true)
     const result = await assignDocumentNumber(doc.id, auto ? undefined : manualDocNumber)
     if (result.success) {
@@ -231,7 +232,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
     setIsLoading(false)
   }
 
-  async function handleReview() {
+  const handleReview = async () => {
     if (!selectedAssignment) return
     setIsLoading(true)
     const result = await completeReview(doc.id, selectedAssignment.id, reviewComment)
@@ -247,7 +248,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
     setIsLoading(false)
   }
 
-  async function handleApproveDoc() {
+  const handleApproveDoc = async () => {
     if (!selectedAssignment) return
     setIsLoading(true)
     const result = await approveDocument(doc.id, selectedAssignment.id, reviewComment)
@@ -263,7 +264,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
     setIsLoading(false)
   }
 
-  async function handleRejectDoc() {
+  const handleRejectDoc = async () => {
     if (!selectedAssignment || !rejectReason.trim()) return
     setIsLoading(true)
     const result = await rejectDocument(doc.id, selectedAssignment.id, rejectReason)
@@ -279,7 +280,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
     setIsLoading(false)
   }
 
-  async function handleAddComment() {
+  const handleAddComment = async () => {
     if (!newComment.trim()) return
     setIsLoading(true)
     const result = await addComment(doc.id, newComment)
@@ -294,20 +295,14 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
 
   return (
     <div className="space-y-6">
-      {/* Alert Messages */}
       {(error || success) && (
-        <div className={`px-4 py-3 rounded-lg flex items-center gap-3 ${
-          error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-        }`}>
+        <div className={`px-4 py-3 rounded-lg flex items-center gap-3 ${error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
           {error ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle className="h-5 w-5" />}
           <p className="text-sm font-medium">{error || success}</p>
-          <button onClick={() => { setError(null); setSuccess(null) }} className="ml-auto">
-            <XCircle className="h-4 w-4" />
-          </button>
+          <button onClick={() => { setError(null); setSuccess(null) }} className="ml-auto"><XCircle className="h-4 w-4" /></button>
         </div>
       )}
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <Link href="/dashboard/documents" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-2">
@@ -320,68 +315,44 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
             ) : (
               <span className="font-mono text-sm text-slate-600">{doc.document_number}</span>
             )}
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(doc.status)}`}>
-              {doc.status}
-            </span>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(doc.status)}`}>{doc.status}</span>
           </div>
         </div>
         
         <div className="flex flex-wrap gap-2">
           {canEdit && (
-            <button
-              onClick={openEditModal}
-              disabled={isLoading}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-            >
+            <button onClick={openEditModal} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
               <Pencil className="h-4 w-4" /> Edit
             </button>
           )}
           {canAssignDocNumber && (
-            <button
-              onClick={() => setShowDocNumberModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-500 rounded-lg hover:bg-purple-600"
-            >
+            <button onClick={() => setShowDocNumberModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-500 rounded-lg hover:bg-purple-600">
               <Hash className="h-4 w-4" /> Assign Doc Number
             </button>
           )}
           {myPendingReviews.length > 0 && (
-            <button
-              onClick={() => { setSelectedAssignment(myPendingReviews[0]); setShowReviewModal(true) }}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600"
-            >
+            <button onClick={() => { setSelectedAssignment(myPendingReviews[0]); setShowReviewModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600">
               <ClipboardCheck className="h-4 w-4" /> Complete Review
             </button>
           )}
           {myPendingApprovals.length > 0 && allReviewersCompleted && (
             <>
-              <button
-                onClick={() => { setSelectedAssignment(myPendingApprovals[0]); setShowApproveModal(true) }}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-emerald-600"
-              >
+              <button onClick={() => { setSelectedAssignment(myPendingApprovals[0]); setShowApproveModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-emerald-600">
                 <CheckCircle className="h-4 w-4" /> Approve
               </button>
-              <button
-                onClick={() => { setSelectedAssignment(myPendingApprovals[0]); setShowRejectModal(true) }}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600"
-              >
+              <button onClick={() => { setSelectedAssignment(myPendingApprovals[0]); setShowRejectModal(true) }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600">
                 <XCircle className="h-4 w-4" /> Reject
               </button>
             </>
           )}
           {doc.draft_link && (
-            
-              href={doc.draft_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-            >
+            <a href={doc.draft_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
               <ExternalLink className="h-4 w-4" /> SharePoint
             </a>
           )}
         </div>
       </div>
 
-      {/* Approvers waiting warning */}
       {myPendingApprovals.length > 0 && !allReviewersCompleted && (
         <div className="px-4 py-3 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 flex items-start gap-3">
           <Info className="h-5 w-5 flex-shrink-0 mt-0.5" />
@@ -392,10 +363,8 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
         </div>
       )}
 
-      {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {/* Document Information */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary-500" /> Document Information
@@ -403,17 +372,11 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-medium text-slate-500 uppercase">Type</label>
-                <p className="mt-1 text-sm">
-                  {doc.document_type_name || '—'}
-                  {doc.document_type_code && <span className="text-xs text-slate-500 ml-1">({doc.document_type_code})</span>}
-                </p>
+                <p className="mt-1 text-sm">{doc.document_type_name || '—'} {doc.document_type_code && <span className="text-xs text-slate-500">({doc.document_type_code})</span>}</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 uppercase">Department</label>
-                <p className="mt-1 text-sm flex items-center gap-1">
-                  <Building2 className="h-4 w-4 text-slate-400" />
-                  {doc.department_name || '—'}
-                </p>
+                <p className="mt-1 text-sm flex items-center gap-1"><Building2 className="h-4 w-4 text-slate-400" />{doc.department_name || '—'}</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 uppercase">Version</label>
@@ -425,10 +388,7 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 uppercase">Target Date</label>
-                <p className="mt-1 text-sm flex items-center gap-1">
-                  <Calendar className="h-4 w-4 text-slate-400" />
-                  {formatDate(doc.target_approval_date)}
-                </p>
+                <p className="mt-1 text-sm flex items-center gap-1"><Calendar className="h-4 w-4 text-slate-400" />{formatDate(doc.target_approval_date)}</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 uppercase">Created At</label>
@@ -443,50 +403,38 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
             )}
           </div>
 
-          {/* Affected Departments */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary-500" /> Affected Departments
             </h2>
             <div className="flex flex-wrap gap-2">
               {affectedDepartments.filter(Boolean).map((d) => (
-                <span key={d!.id} className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-sm">
-                  {d!.name}
-                </span>
+                <span key={d!.id} className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-sm">{d!.name}</span>
               ))}
-              {affectedDepartments.filter(Boolean).length === 0 && (
-                <p className="text-sm text-slate-500 italic">None</p>
-              )}
+              {affectedDepartments.filter(Boolean).length === 0 && <p className="text-sm text-slate-500 italic">None</p>}
             </div>
           </div>
 
-          {/* Assignments */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <Users className="h-5 w-5 text-primary-500" /> Assignments
             </h2>
             <div className="space-y-4">
-              {/* Submitters */}
               {submitters.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-600 mb-2">Submitters</h3>
                   {submitters.map(a => (
                     <div key={a.id} className="p-3 rounded-lg border bg-white border-slate-200 mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="h-6 w-6 rounded-full flex items-center justify-center text-white text-xs bg-blue-500">
-                          {(a.profiles?.full_name?.[0] || '?')}
-                        </span>
+                        <span className="h-6 w-6 rounded-full flex items-center justify-center text-white text-xs bg-blue-500">{(a.profiles?.full_name?.[0] || '?')}</span>
                         <span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email || 'Unknown'}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>
-                          {getRoleLabel(a.role_type)}
-                        </span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Reviewers */}
               {reviewers.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-600 mb-2">Reviewers</h3>
@@ -497,26 +445,19 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
                           {a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}
                         </span>
                         <span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email || 'Unknown'}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>
-                          {getRoleLabel(a.role_type)}
-                        </span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>
                         {a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}
                       </div>
-                      {a.assignment_notes && (
-                        <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>
-                      )}
+                      {a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Approvers */}
               {approvers.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-600 mb-2">Approvers</h3>
-                  {!allReviewersCompleted && reviewers.length > 0 && (
-                    <p className="text-xs text-amber-600 mb-2">Approvers can act after all reviewers complete</p>
-                  )}
+                  {!allReviewersCompleted && reviewers.length > 0 && <p className="text-xs text-amber-600 mb-2">Approvers can act after all reviewers complete</p>}
                   {approvers.map(a => (
                     <div key={a.id} className={`p-3 rounded-lg border mb-2 ${!allReviewersCompleted && reviewers.length > 0 ? 'opacity-60' : ''} ${a.is_completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
                       <div className="flex items-center gap-2">
@@ -524,70 +465,44 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
                           {a.is_completed ? <CheckCircle className="h-3 w-3" /> : (a.profiles?.full_name?.[0] || '?')}
                         </span>
                         <span className="text-sm font-medium">{a.profiles?.full_name || a.profiles?.email || 'Unknown'}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>
-                          {getRoleLabel(a.role_type)}
-                        </span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${getRoleColor(a.role_type)}`}>{getRoleLabel(a.role_type)}</span>
                         {a.is_completed && <span className="text-xs text-emerald-600">Completed</span>}
                       </div>
-                      {a.assignment_notes && (
-                        <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>
-                      )}
+                      {a.assignment_notes && <p className="text-xs text-slate-500 mt-1 italic">{a.assignment_notes}</p>}
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* No assignments message */}
-              {assignments.length === 0 && (
-                <p className="text-sm text-slate-500 italic">
-                  No assignments yet. {canEdit && 'Click Edit to add reviewers and approvers.'}
-                </p>
+              {safeAssignments.length === 0 && (
+                <p className="text-sm text-slate-500 italic">No assignments yet. {canEdit && 'Click Edit to add reviewers and approvers.'}</p>
               )}
             </div>
           </div>
 
-          {/* Comments */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-primary-500" /> Comments
             </h2>
             <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Add a comment..."
-                className="flex-1 px-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
-              />
-              <button
-                onClick={handleAddComment}
-                disabled={isLoading || !newComment.trim()}
-                className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg hover:bg-primary-600 disabled:opacity-50"
-              >
-                <Send className="h-4 w-4" />
-              </button>
+              <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Add a comment..." className="flex-1 px-4 py-2 text-sm border border-slate-300 rounded-lg" onKeyDown={(e) => e.key === 'Enter' && handleAddComment()} />
+              <button onClick={handleAddComment} disabled={isLoading || !newComment.trim()} className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg disabled:opacity-50"><Send className="h-4 w-4" /></button>
             </div>
             <div className="space-y-3">
               {comments.map((c) => (
                 <div key={c.id} className="p-3 bg-slate-50 rounded-lg">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-slate-800">
-                      {c.profiles?.full_name || 'Unknown'}
-                    </span>
+                    <span className="text-sm font-medium text-slate-800">{c.profiles?.full_name || 'Unknown'}</span>
                     <span className="text-xs text-slate-400">{formatDateTime(c.created_at)}</span>
                   </div>
                   <p className="text-sm text-slate-700">{c.content}</p>
                 </div>
               ))}
-              {comments.length === 0 && (
-                <p className="text-sm text-slate-500 italic text-center py-4">No comments yet</p>
-              )}
+              {comments.length === 0 && <p className="text-sm text-slate-500 italic text-center py-4">No comments yet</p>}
             </div>
           </div>
         </div>
 
-        {/* Sidebar - Timeline */}
         <div className="space-y-6">
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
@@ -596,346 +511,161 @@ export default function DocumentDetail({ document: doc, assignments, affectedDep
             <div className="space-y-4">
               {timeline.map((t, i) => (
                 <div key={t.id} className="relative pl-6">
-                  {i < timeline.length - 1 && (
-                    <div className="absolute left-[9px] top-6 w-0.5 h-full bg-slate-200"></div>
-                  )}
-                  <div className={`absolute left-0 top-1 w-[18px] h-[18px] rounded-full flex items-center justify-center ${
-                    t.event_type === 'created' ? 'bg-blue-100' :
-                    t.event_type === 'approved' ? 'bg-emerald-100' :
-                    t.event_type === 'rejected' ? 'bg-red-100' :
-                    'bg-slate-100'
-                  }`}>
-                    <div className={`w-2 h-2 rounded-full ${
-                      t.event_type === 'created' ? 'bg-blue-500' :
-                      t.event_type === 'approved' ? 'bg-emerald-500' :
-                      t.event_type === 'rejected' ? 'bg-red-500' :
-                      'bg-slate-500'
-                    }`}></div>
+                  {i < timeline.length - 1 && <div className="absolute left-[9px] top-6 w-0.5 h-full bg-slate-200"></div>}
+                  <div className={`absolute left-0 top-1 w-[18px] h-[18px] rounded-full flex items-center justify-center ${t.event_type === 'created' ? 'bg-blue-100' : t.event_type === 'approved' ? 'bg-emerald-100' : t.event_type === 'rejected' ? 'bg-red-100' : 'bg-slate-100'}`}>
+                    <div className={`w-2 h-2 rounded-full ${t.event_type === 'created' ? 'bg-blue-500' : t.event_type === 'approved' ? 'bg-emerald-500' : t.event_type === 'rejected' ? 'bg-red-500' : 'bg-slate-500'}`}></div>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-slate-800">{t.event_title}</p>
-                    {t.event_description && (
-                      <p className="text-xs text-slate-500 mt-0.5">{t.event_description}</p>
-                    )}
+                    {t.event_description && <p className="text-xs text-slate-500 mt-0.5">{t.event_description}</p>}
                     <p className="text-xs text-slate-400 mt-1">{formatDateTime(t.created_at)}</p>
                   </div>
                 </div>
               ))}
-              {timeline.length === 0 && (
-                <p className="text-sm text-slate-500 italic text-center py-4">No timeline</p>
-              )}
+              {timeline.length === 0 && <p className="text-sm text-slate-500 italic text-center py-4">No timeline</p>}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Modals */}
-      
-      {/* Doc Number Modal */}
       {showDocNumberModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowDocNumberModal(false)}></div>
           <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Hash className="h-5 w-5 text-purple-500" /> Assign Document Number
-            </h3>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Hash className="h-5 w-5 text-purple-500" /> Assign Document Number</h3>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Manual Number (optional)</label>
-              <input
-                type="text"
-                value={manualDocNumber}
-                onChange={(e) => setManualDocNumber(e.target.value.toUpperCase())}
-                placeholder="MRT-AST-PLC-001"
-                className="w-full px-4 py-2 border rounded-lg font-mono"
-              />
-              <p className="text-xs text-slate-500 mt-1">Format: XXX-XXX-XXX-NNN or leave empty to auto-generate</p>
+              <input type="text" value={manualDocNumber} onChange={(e) => setManualDocNumber(e.target.value.toUpperCase())} placeholder="MRT-AST-PLC-001" className="w-full px-4 py-2 border rounded-lg font-mono" />
+              <p className="text-xs text-slate-500 mt-1">Format: XXX-XXX-XXX-NNN</p>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => handleAssignDocNum(true)}
-                disabled={isLoading}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Auto-Generate'}
-              </button>
-              <button
-                onClick={() => handleAssignDocNum(false)}
-                disabled={isLoading || !manualDocNumber.trim()}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg disabled:opacity-50"
-              >
-                Use Manual
-              </button>
+              <button onClick={() => handleAssignDocNum(true)} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Auto-Generate'}</button>
+              <button onClick={() => handleAssignDocNum(false)} disabled={isLoading || !manualDocNumber.trim()} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg disabled:opacity-50">Use Manual</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Review Modal */}
       {showReviewModal && selectedAssignment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }}></div>
           <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5 text-blue-500" /> Complete Review
-            </h3>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-blue-500" /> Complete Review</h3>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Comments (optional)</label>
-              <textarea
-                value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-                placeholder="Review comments..."
-                rows={4}
-                className="w-full px-4 py-2 border rounded-lg resize-none"
-              />
+              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Review comments..." rows={4} className="w-full px-4 py-2 border rounded-lg resize-none" />
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleReview}
-                disabled={isLoading}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Complete Review'}
-              </button>
+              <button onClick={() => { setShowReviewModal(false); setSelectedAssignment(null); setReviewComment('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button>
+              <button onClick={handleReview} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Complete Review'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Approve Modal */}
       {showApproveModal && selectedAssignment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }}></div>
           <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-emerald-500" /> Approve Document
-            </h3>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><CheckCircle className="h-5 w-5 text-emerald-500" /> Approve Document</h3>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Comments (optional)</label>
-              <textarea
-                value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-                placeholder="Approval comments..."
-                rows={3}
-                className="w-full px-4 py-2 border rounded-lg resize-none"
-              />
+              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Approval comments..." rows={3} className="w-full px-4 py-2 border rounded-lg resize-none" />
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApproveDoc}
-                disabled={isLoading}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Approve'}
-              </button>
+              <button onClick={() => { setShowApproveModal(false); setSelectedAssignment(null); setReviewComment('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button>
+              <button onClick={handleApproveDoc} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Approve'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Reject Modal */}
       {showRejectModal && selectedAssignment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }}></div>
           <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-500" /> Reject Document
-            </h3>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><XCircle className="h-5 w-5 text-red-500" /> Reject Document</h3>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Reason <span className="text-red-500">*</span></label>
-              <textarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Rejection reason..."
-                rows={4}
-                className="w-full px-4 py-2 border rounded-lg resize-none"
-              />
+              <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Rejection reason..." rows={4} className="w-full px-4 py-2 border rounded-lg resize-none" />
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRejectDoc}
-                disabled={isLoading || !rejectReason.trim()}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Reject'}
-              </button>
+              <button onClick={() => { setShowRejectModal(false); setSelectedAssignment(null); setRejectReason('') }} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button>
+              <button onClick={handleRejectDoc} disabled={isLoading || !rejectReason.trim()} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg disabled:opacity-50">{isLoading ? 'Loading...' : 'Reject'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Edit Modal */}
       {showEditModal && formOptions && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowEditModal(false)}></div>
           <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Pencil className="h-5 w-5 text-primary-500" /> Edit Document
-            </h3>
-            
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><Pencil className="h-5 w-5 text-primary-500" /> Edit Document</h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Title</label>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
+                <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  rows={2}
-                  className="w-full px-4 py-2 border rounded-lg resize-none"
-                />
+                <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={2} className="w-full px-4 py-2 border rounded-lg resize-none" />
               </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Document Type</label>
-                  <select
-                    value={editDocTypeId}
-                    onChange={(e) => setEditDocTypeId(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  >
-                    {formOptions.documentTypes.map(t => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
+                  <select value={editDocTypeId} onChange={(e) => setEditDocTypeId(e.target.value)} className="w-full px-4 py-2 border rounded-lg">{formOptions.documentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Department</label>
-                  <select
-                    value={editDeptId}
-                    onChange={(e) => setEditDeptId(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  >
-                    {formOptions.departments.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
+                  <select value={editDeptId} onChange={(e) => setEditDeptId(e.target.value)} className="w-full px-4 py-2 border rounded-lg">{formOptions.departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
                 </div>
               </div>
-              
               <div>
                 <label className="block text-sm font-medium mb-1">SharePoint Link</label>
-                <input
-                  type="url"
-                  value={editDraftLink}
-                  onChange={(e) => setEditDraftLink(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
+                <input type="url" value={editDraftLink} onChange={(e) => setEditDraftLink(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium mb-1">Target Date</label>
-                <input
-                  type="date"
-                  value={editTargetDate}
-                  onChange={(e) => setEditTargetDate(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
+                <input type="date" value={editTargetDate} onChange={(e) => setEditTargetDate(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium mb-1">Affected Departments</label>
                 <div className="grid grid-cols-3 gap-2 max-h-32 overflow-y-auto border rounded-lg p-2">
                   {formOptions.departments.map(d => (
-                    <label
-                      key={d.id}
-                      className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${
-                        editAffectedDepts.includes(d.id) ? 'bg-primary-100' : ''
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={editAffectedDepts.includes(d.id)}
-                        onChange={() => toggleArray(editAffectedDepts, setEditAffectedDepts, d.id)}
-                      />
+                    <label key={d.id} className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${editAffectedDepts.includes(d.id) ? 'bg-primary-100' : ''}`}>
+                      <input type="checkbox" checked={editAffectedDepts.includes(d.id)} onChange={() => toggleArray(editAffectedDepts, setEditAffectedDepts, d.id)} />
                       {d.name}
                     </label>
                   ))}
                 </div>
               </div>
-              
               <div>
                 <label className="block text-sm font-medium mb-1">Reviewers</label>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded-lg p-2">
                   {formOptions.users.map(u => (
-                    <label
-                      key={u.id}
-                      className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${
-                        editReviewerIds.includes(u.id) ? 'bg-amber-100' : ''
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={editReviewerIds.includes(u.id)}
-                        onChange={() => toggleArray(editReviewerIds, setEditReviewerIds, u.id)}
-                      />
+                    <label key={u.id} className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${editReviewerIds.includes(u.id) ? 'bg-amber-100' : ''}`}>
+                      <input type="checkbox" checked={editReviewerIds.includes(u.id)} onChange={() => toggleArray(editReviewerIds, setEditReviewerIds, u.id)} />
                       {u.full_name || u.email}
                     </label>
                   ))}
                 </div>
               </div>
-              
               <div>
                 <label className="block text-sm font-medium mb-1">Approvers</label>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded-lg p-2">
                   {formOptions.users.map(u => (
-                    <label
-                      key={u.id}
-                      className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${
-                        editApproverIds.includes(u.id) ? 'bg-emerald-100' : ''
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={editApproverIds.includes(u.id)}
-                        onChange={() => toggleArray(editApproverIds, setEditApproverIds, u.id)}
-                      />
+                    <label key={u.id} className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm ${editApproverIds.includes(u.id) ? 'bg-emerald-100' : ''}`}>
+                      <input type="checkbox" checked={editApproverIds.includes(u.id)} onChange={() => toggleArray(editApproverIds, setEditApproverIds, u.id)} />
                       {u.full_name || u.email}
                     </label>
                   ))}
                 </div>
               </div>
             </div>
-            
             <div className="flex gap-2 mt-6">
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                disabled={isLoading}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Save Changes'}
-              </button>
+              <button onClick={() => setShowEditModal(false)} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg">Cancel</button>
+              <button onClick={handleSaveEdit} disabled={isLoading} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg disabled:opacity-50">{isLoading ? 'Saving...' : 'Save Changes'}</button>
             </div>
           </div>
         </div>
