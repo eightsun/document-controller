@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { FileQuestion, Home, ArrowLeft, Search } from 'lucide-react'
+import { FileQuestion, Home, Search } from 'lucide-react'
 
 export default function NotFound() {
   return (
@@ -24,24 +24,9 @@ export default function NotFound() {
 
         {/* Description */}
         <p className="text-slate-500 mb-8 max-w-md mx-auto">
-          Oops! The page you're looking for doesn't exist or has been moved. 
+          Oops! The page you are looking for does not exist or has been moved. 
           Please check the URL or navigate back to the dashboard.
         </p>
-
-        {/* Search suggestion */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
-          <p className="text-sm text-slate-600 mb-4">
-            Looking for a document? Try searching:
-          </p>
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search documents..."
-              className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
-            />
-          </div>
-        </div>
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -52,13 +37,13 @@ export default function NotFound() {
             <Home className="w-4 h-4" />
             Go to Dashboard
           </Link>
-          <button
-            onClick={() => typeof window !== 'undefined' && window.history.back()}
+          <Link
+            href="/dashboard/documents"
             className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors"
           >
-            <ArrowLeft className="w-4 h-4" />
-            Go Back
-          </button>
+            <Search className="w-4 h-4" />
+            Browse Documents
+          </Link>
         </div>
 
         {/* Quick links */}
