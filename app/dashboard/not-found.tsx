@@ -17,7 +17,7 @@ export default function DashboardNotFound() {
 
         {/* Description */}
         <p className="text-slate-500 mb-8">
-          The page you're looking for doesn't exist or has been moved.
+          The page you are looking for does not exist or has been moved.
         </p>
 
         {/* Actions */}
