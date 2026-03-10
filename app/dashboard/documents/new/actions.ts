@@ -44,7 +44,12 @@ export async function createDocument(data: CreateDocumentData): Promise<ActionRe
         .eq('id', data.parent_document_id)
         .single()
       if (parentDoc) {
-        parentDocMeta = parentDoc as typeof parentDocMeta
+        parentDocMeta = {
+          version: parentDoc.version as string,
+          document_number: parentDoc.document_number as string,
+          title: parentDoc.title as string,
+          expiry_date: parentDoc.expiry_date as string | null,
+        }
         const parentMajor = parseInt((parentDoc.version as string).split('.')[0], 10)
         newVersion = `${(isNaN(parentMajor) ? 1 : parentMajor) + 1}.0`
       }

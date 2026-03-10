@@ -1594,7 +1594,7 @@ export async function getDocumentForEdit(documentId: string): Promise<ActionResp
     const { data: reviewerAssignments } = await supabase.from('document_assignments').select('user_id').eq('document_id', documentId).eq('role_type', 'reviewer')
     const { data: approverAssignments } = await supabase.from('document_assignments').select('user_id').eq('document_id', documentId).eq('role_type', 'approver')
 
-    const deptData = doc.departments as { legal_entity_id: string | null } | null
+    const deptData = (Array.isArray(doc.departments) ? doc.departments[0] : doc.departments) as { legal_entity_id: string | null } | null
 
     return {
       success: true,
