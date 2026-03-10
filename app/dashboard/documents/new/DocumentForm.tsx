@@ -8,26 +8,63 @@ import { createDocument } from './actions'
 
 interface Props {
   documentTypes: Array<{ id: string; name: string; code: string }>
-  departments: Array<{ id: string; name: string; code: string | null }>
+  departments: Array<{ id: string; name: string; code: string | null; legal_entity_id: string | null }>
   users: Array<{ id: string; full_name: string | null; email: string | null }>
+  legalEntities: Array<{ id: string; name: string; code: string }>
+  subDepartments: Array<{ id: string; name: string; code: string | null; department_id: string }>
   currentUserId: string
+  reviseFromDoc?: {
+    id: string
+    title: string
+    description: string | null
+    documentTypeId: string
+    departmentId: string
+    subDepartmentId: string | null
+    draftLink: string | null
+    targetDate: string | null
+    version: string
+    documentNumber: string
+    legalEntityId: string | null
+  }
 }
 
-export default function DocumentForm({ documentTypes, departments, users, currentUserId }: Props) {
+export default function DocumentForm({ documentTypes, departments, users, legalEntities, subDepartments, currentUserId, reviseFromDoc }: Props) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Form state
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [documentTypeId, setDocumentTypeId] = useState('')
-  const [departmentId, setDepartmentId] = useState('')
-  const [draftLink, setDraftLink] = useState('')
-  const [targetDate, setTargetDate] = useState('')
+  const [title, setTitle] = useState(reviseFromDoc?.title || '')
+  const [description, setDescription] = useState(reviseFromDoc?.description || '')
+  const [documentTypeId, setDocumentTypeId] = useState(reviseFromDoc?.documentTypeId || '')
+  const [legalEntityId, setLegalEntityId] = useState(reviseFromDoc?.legalEntityId || '')
+  const [departmentId, setDepartmentId] = useState(reviseFromDoc?.departmentId || '')
+  const [subDepartmentId, setSubDepartmentId] = useState(reviseFromDoc?.subDepartmentId || '')
+  const [draftLink, setDraftLink] = useState(reviseFromDoc?.draftLink || '')
+  const [targetDate, setTargetDate] = useState(reviseFromDoc?.targetDate?.split('T')[0] || '')
   const [affectedDepts, setAffectedDepts] = useState<string[]>([])
   const [reviewerIds, setReviewerIds] = useState<string[]>([])
   const [approverIds, setApproverIds] = useState<string[]>([])
+
+  // Cascading selectors
+  const filteredDepartments = legalEntityId
+    ? departments.filter(d => d.legal_entity_id === legalEntityId)
+    : departments
+
+  const filteredSubDepts = departmentId
+    ? subDepartments.filter(s => s.department_id === departmentId)
+    : []
+
+  const handleLegalEntityChange = (leId: string) => {
+    setLegalEntityId(leId)
+    setDepartmentId('')
+    setSubDepartmentId('')
+  }
+
+  const handleDepartmentChange = (deptId: string) => {
+    setDepartmentId(deptId)
+    setSubDepartmentId('')
+  }
 
   const toggleArray = (arr: string[], setArr: (v: string[]) => void, id: string) => {
     if (arr.includes(id)) {
@@ -50,6 +87,10 @@ export default function DocumentForm({ documentTypes, departments, users, curren
       setError('Document type is required')
       return
     }
+    if (legalEntities.length > 0 && !legalEntityId) {
+      setError('Legal entity is required')
+      return
+    }
     if (!departmentId) {
       setError('Department is required')
       return
@@ -63,11 +104,13 @@ export default function DocumentForm({ documentTypes, departments, users, curren
         description: description.trim(),
         document_type_id: documentTypeId,
         department_id: departmentId,
+        sub_department_id: subDepartmentId || undefined,
         draft_link: draftLink.trim(),
         target_approval_date: targetDate,
         affected_department_ids: affectedDepts,
         reviewer_ids: reviewerIds,
         approver_ids: approverIds,
+        parent_document_id: reviseFromDoc?.id,
       })
 
       if (result.success && result.data) {
@@ -91,7 +134,7 @@ export default function DocumentForm({ documentTypes, departments, users, curren
         <Link href="/dashboard/documents" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-2">
           <ArrowLeft className="h-4 w-4" /> Back to Documents
         </Link>
-        <h1 className="text-2xl font-bold text-slate-800">Create New Document</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{reviseFromDoc ? 'Create Document Revision' : 'Create New Document'}</h1>
         <p className="text-sm text-slate-500 mt-1">Fill in the details below to create a new document for review and approval.</p>
       </div>
 
@@ -99,6 +142,16 @@ export default function DocumentForm({ documentTypes, departments, users, curren
         <div className="mb-6 px-4 py-3 rounded-lg bg-red-50 text-red-700 border border-red-200 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 flex-shrink-0" />
           <p className="text-sm font-medium">{error}</p>
+        </div>
+      )}
+
+      {reviseFromDoc && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-3">
+          <FileText className="h-5 w-5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium">Creating Revision</p>
+            <p className="text-xs mt-0.5">Revising document <span className="font-mono font-semibold">{reviseFromDoc.documentNumber}</span> (v{reviseFromDoc.version}) — new version will be v{parseInt(reviseFromDoc.version.split('.')[0], 10) + 1}.0</p>
+          </div>
         </div>
       )}
 
@@ -158,24 +211,68 @@ export default function DocumentForm({ documentTypes, departments, users, curren
                 </select>
               </div>
 
+              {legalEntities.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Legal Entity <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={legalEntityId}
+                    onChange={(e) => handleLegalEntityChange(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                    required
+                  >
+                    <option value="">Select legal entity...</option>
+                    {legalEntities.map((le) => (
+                      <option key={le.id} value={le.id}>
+                        {le.name} ({le.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Department <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={departmentId}
-                  onChange={(e) => setDepartmentId(e.target.value)}
+                  onChange={(e) => handleDepartmentChange(e.target.value)}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                   required
+                  disabled={legalEntities.length > 0 && !legalEntityId}
                 >
-                  <option value="">Select department...</option>
-                  {departments.map((dept) => (
+                  <option value="">{legalEntities.length > 0 && !legalEntityId ? 'Select legal entity first...' : 'Select department...'}</option>
+                  {filteredDepartments.map((dept) => (
                     <option key={dept.id} value={dept.id}>
                       {dept.name}
                     </option>
                   ))}
                 </select>
               </div>
+
+              {departmentId && filteredSubDepts.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Sub-Department
+                  </label>
+                  <select
+                    value={subDepartmentId}
+                    onChange={(e) => setSubDepartmentId(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                  >
+                    <option value="">— None (optional) —</option>
+                    {filteredSubDepts.map((sd) => (
+                      <option key={sd.id} value={sd.id}>
+                        {sd.name}{sd.code ? ` (${sd.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

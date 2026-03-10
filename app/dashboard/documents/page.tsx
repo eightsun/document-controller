@@ -108,18 +108,18 @@ async function getDocumentsData(searchParams: SearchParams) {
       query = query.eq('id', '00000000-0000-0000-0000-000000000000')
     }
   } else if (tab === 'expiring') {
-    // Documents expiring within 90 days
+    // Documents expiring within 90 days (Approved or Training)
     const now = new Date()
     const future90 = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
     query = query
-      .eq('status', 'Approved')
+      .in('status', ['Approved', 'Training'])
       .gte('expiry_date', now.toISOString().split('T')[0])
       .lte('expiry_date', future90.toISOString().split('T')[0])
   } else if (tab === 'expired') {
-    // Expired documents
+    // Expired documents (Approved or Training)
     const now = new Date()
     query = query
-      .eq('status', 'Approved')
+      .in('status', ['Approved', 'Training'])
       .lt('expiry_date', now.toISOString().split('T')[0])
   } else {
     // All documents - if not admin/BPM, show only documents user is involved with
@@ -216,7 +216,7 @@ async function getDocumentsData(searchParams: SearchParams) {
   const { count: expiringCount } = await supabase
     .from('documents')
     .select('*', { count: 'exact', head: true })
-    .eq('status', 'Approved')
+    .in('status', ['Approved', 'Training'])
     .gte('expiry_date', now.toISOString().split('T')[0])
     .lte('expiry_date', future90.toISOString().split('T')[0])
   tabCounts.expiring = expiringCount || 0
@@ -225,7 +225,7 @@ async function getDocumentsData(searchParams: SearchParams) {
   const { count: expiredCount } = await supabase
     .from('documents')
     .select('*', { count: 'exact', head: true })
-    .eq('status', 'Approved')
+    .in('status', ['Approved', 'Training'])
     .lt('expiry_date', now.toISOString().split('T')[0])
   tabCounts.expired = expiredCount || 0
 

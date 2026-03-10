@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Clock, FileText, User, Calendar, ArrowRight, CheckCircle, AlertCircle } from 'lucide-react'
+import { Clock, FileText, User, Calendar, ArrowRight, CheckCircle, AlertCircle, Archive } from 'lucide-react'
 
 export const metadata = {
   title: 'Pending Review | Document Controller',
@@ -16,6 +16,8 @@ export default async function PendingReviewPage() {
   }
 
   // Get documents pending user's review
+  // Note: do NOT join profiles via FK hint — documents.created_by → auth.users (not profiles),
+  // so PostgREST can't resolve it and returns an error that nullifies the whole result.
   const { data: pendingReviews } = await supabase
     .from('document_assignments')
     .select(`
@@ -30,7 +32,6 @@ export default async function PendingReviewPage() {
         status,
         target_approval_date,
         created_at,
-        profiles!documents_created_by_fkey (full_name, email),
         departments (name)
       )
     `)
@@ -38,9 +39,19 @@ export default async function PendingReviewPage() {
     .eq('is_completed', false)
     .order('assigned_at', { ascending: false })
 
+  // Get documents pending obsolete approval for this user
+  // Use documents_with_details view to avoid broken FK hint on profiles
+  const { data: pendingObsolete } = await supabase
+    .from('documents_with_details')
+    .select('id, document_number, title, status, obsolete_reason, obsolete_requested_at, department_name, created_by_name, created_by_email')
+    .eq('obsolete_approver_id', user.id)
+    .eq('status', 'Obsolete Pending')
+    .order('obsolete_requested_at', { ascending: false })
+
   // Separate reviews and approvals
   const reviewTasks = pendingReviews?.filter(p => p.role_type === 'reviewer') || []
   const approvalTasks = pendingReviews?.filter(p => p.role_type === 'approver') || []
+  const obsoleteTasks = pendingObsolete || []
 
   // Filter approval tasks to only show documents in "Waiting Approval" status
   const activeApprovalTasks = approvalTasks.filter(
@@ -77,7 +88,7 @@ export default async function PendingReviewPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid sm:grid-cols-2 gap-4 mb-8">
+      <div className="grid sm:grid-cols-3 gap-4 mb-8">
         <div className="card p-5 border-l-4 border-l-blue-500">
           <div className="flex items-center justify-between">
             <div>
@@ -97,6 +108,17 @@ export default async function PendingReviewPage() {
             </div>
             <div className="p-3 bg-emerald-100 rounded-full">
               <CheckCircle className="w-6 h-6 text-emerald-600" />
+            </div>
+          </div>
+        </div>
+        <div className="card p-5 border-l-4 border-l-orange-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-500">Obsolete Approvals</p>
+              <p className="text-3xl font-bold text-slate-800">{obsoleteTasks.length}</p>
+            </div>
+            <div className="p-3 bg-orange-100 rounded-full">
+              <Archive className="w-6 h-6 text-orange-600" />
             </div>
           </div>
         </div>
@@ -145,10 +167,6 @@ export default async function PendingReviewPage() {
                     </div>
                     <p className="font-medium text-slate-800 truncate">{doc?.title}</p>
                     <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {doc?.profiles?.full_name || doc?.profiles?.email}
-                      </span>
                       <span>{doc?.departments?.name}</span>
                     </div>
                   </div>
@@ -177,6 +195,52 @@ export default async function PendingReviewPage() {
           </div>
         )}
       </div>
+
+      {/* Obsolete Approval Tasks */}
+      {obsoleteTasks.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+            <Archive className="w-5 h-5 text-orange-500" />
+            Pending Obsolete Approvals ({obsoleteTasks.length})
+          </h2>
+          <div className="space-y-3">
+            {obsoleteTasks.map((doc: any) => (
+              <Link
+                key={doc.id}
+                href={`/dashboard/documents/${doc.id}`}
+                className="card p-4 hover:shadow-md transition-shadow flex items-center gap-4 group border-l-4 border-l-orange-500"
+              >
+                <div className="p-3 bg-orange-50 rounded-lg group-hover:bg-orange-100 transition-colors">
+                  <Archive className="w-5 h-5 text-orange-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-mono text-slate-400">{doc.document_number}</span>
+                    <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-700">Obsolete Pending</span>
+                  </div>
+                  <p className="font-medium text-slate-800 truncate">{doc.title}</p>
+                  <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      {doc.created_by_name || doc.created_by_email}
+                    </span>
+                    <span>{doc.department_name}</span>
+                    {doc.obsolete_reason && (
+                      <span className="italic truncate max-w-xs">"{doc.obsolete_reason}"</span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">
+                    Requested {doc.obsolete_requested_at ? formatDate(doc.obsolete_requested_at) : '—'}
+                  </p>
+                </div>
+                <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-orange-500 transition-colors" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Approval Tasks */}
       <div>
@@ -222,10 +286,6 @@ export default async function PendingReviewPage() {
                     </div>
                     <p className="font-medium text-slate-800 truncate">{doc?.title}</p>
                     <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {doc?.profiles?.full_name || doc?.profiles?.email}
-                      </span>
                       <span>{doc?.departments?.name}</span>
                     </div>
                   </div>

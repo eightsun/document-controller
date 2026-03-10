@@ -8,6 +8,7 @@ import type { Department, DepartmentFormData } from '@/types/database'
 
 interface DepartmentFormProps {
   department?: Department | null
+  legalEntities?: Array<{ id: string; name: string; code: string }>
   onSubmit: (data: DepartmentFormData) => Promise<void>
   onCancel: () => void
   isLoading?: boolean
@@ -15,6 +16,7 @@ interface DepartmentFormProps {
 
 export default function DepartmentForm({
   department,
+  legalEntities = [],
   onSubmit,
   onCancel,
   isLoading = false,
@@ -34,6 +36,7 @@ export default function DepartmentForm({
       code: department?.code || '',
       description: department?.description || '',
       is_active: department?.is_active ?? true,
+      legal_entity_id: department?.legal_entity_id || '',
     },
   })
 
@@ -45,6 +48,7 @@ export default function DepartmentForm({
         code: department.code || '',
         description: department.description || '',
         is_active: department.is_active,
+        legal_entity_id: department.legal_entity_id || '',
       })
     } else {
       reset({
@@ -52,6 +56,7 @@ export default function DepartmentForm({
         code: '',
         description: '',
         is_active: true,
+        legal_entity_id: '',
       })
     }
   }, [department, reset])
@@ -215,6 +220,28 @@ export default function DepartmentForm({
                 </p>
               )}
             </div>
+
+            {/* Legal Entity */}
+            {legalEntities.length > 0 && (
+              <div>
+                <label
+                  htmlFor="legal_entity_id"
+                  style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}
+                >
+                  Legal Entity
+                </label>
+                <select
+                  id="legal_entity_id"
+                  style={{ width: '100%', padding: '10px 16px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', backgroundColor: 'white', boxSizing: 'border-box' }}
+                  {...register('legal_entity_id')}
+                >
+                  <option value="">— Select Legal Entity —</option>
+                  {legalEntities.map(le => (
+                    <option key={le.id} value={le.id}>{le.name} ({le.code})</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Department Code */}
             <div>

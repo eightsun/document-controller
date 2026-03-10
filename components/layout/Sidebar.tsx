@@ -3,11 +3,11 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { 
-  LayoutDashboard, 
-  FileText, 
-  FolderOpen, 
-  Users, 
-  Settings, 
+  LayoutDashboard,
+  FileText,
+  FolderOpen,
+  Users,
+  Settings,
   BarChart3,
   Upload,
   Clock,
@@ -16,7 +16,8 @@ import {
   Building2,
   UserCog,
   Shield,
-  Bell
+  Bell,
+  Landmark
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -29,6 +30,7 @@ const mainNavigation = [
 ]
 
 const adminNavigation = [
+  { name: 'Legal Entities', href: '/dashboard/legal-entities', icon: Landmark },
   { name: 'Departments', href: '/dashboard/departments', icon: Building2 },
   { name: 'Document Types', href: '/dashboard/document-types', icon: FolderOpen },
   { name: 'Users', href: '/dashboard/users', icon: Users },

@@ -2,14 +2,17 @@
 // DATABASE TYPES
 // ============================================================================
 
-export type DocumentStatus = 
+export type DocumentStatus =
   | 'Initiation'
   | 'Review'
   | 'Waiting Approval'
   | 'Approved'
+  | 'Training'
   | 'Closed'
   | 'Rejected'
-  | 'Cancel';
+  | 'Cancel'
+  | 'Obsolete Pending'
+  | 'Obsolete';
 
 export type AssignmentRoleType = 'submitter' | 'reviewer' | 'approver';
 
@@ -28,11 +31,18 @@ export type TimelineEventType =
   | 'rejected'
   | 'returned'
   | 'published'
+  | 'training_started'
+  | 'training_acknowledged'
+  | 'training_completed'
   | 'closed'
   | 'cancelled'
   | 'edited'
   | 'comment_added'
-  | 'reopened';
+  | 'reopened'
+  | 'revision_initiated'
+  | 'obsolete_requested'
+  | 'obsolete_approved'
+  | 'obsolete_rejected';
 
 export type NotificationType =
   | 'assignment'
@@ -40,12 +50,38 @@ export type NotificationType =
   | 'approval_request'
   | 'status_change'
   | 'comment'
+  | 'training_assigned'
   | 'reminder'
-  | 'system';
+  | 'system'
+  | 'obsolete_approval_required'
+  | 'document_obsoleted'
+  | 'obsolete_rejected';
 
 // ============================================================================
 // TABLE INTERFACES
 // ============================================================================
+
+export interface LegalEntity {
+  id: string;
+  name: string;
+  code: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface SubDepartment {
+  id: string;
+  name: string;
+  code: string | null;
+  department_id: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
 
 export interface Department {
   id: string;
@@ -53,6 +89,7 @@ export interface Department {
   code: string | null;
   description: string | null;
   is_active: boolean;
+  legal_entity_id: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -129,6 +166,9 @@ export interface Document {
   approved_at: string | null;
   published_at: string | null;
   closed_at: string | null;
+  closed_by: string | null;
+  training_started_at: string | null;
+  sub_department_id: string | null;
   cancelled_at: string | null;
   rejected_at: string | null;
   is_deleted: boolean;
@@ -138,6 +178,14 @@ export interface Document {
   notes: string | null;
   cancellation_reason: string | null;
   rejection_reason: string | null;
+  parent_document_id: string | null;
+  obsolete_reason: string | null;
+  obsolete_requested_at: string | null;
+  obsolete_requested_by: string | null;
+  obsolete_approver_id: string | null;
+  obsolete_approved_at: string | null;
+  obsolete_rejected_at: string | null;
+  obsolete_rejection_reason: string | null;
 }
 
 export interface DocumentAssignment {
@@ -166,6 +214,17 @@ export interface DocumentReview {
   reviewed_document_link: string | null;
   started_at: string | null;
   submitted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentTraining {
+  id: string;
+  document_id: string;
+  user_id: string;
+  department_id: string | null;
+  acknowledged: boolean;
+  acknowledged_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -247,11 +306,18 @@ export interface DocumentWithDetails extends Document {
   document_type_prefix: string;
   department_name: string | null;
   department_code: string | null;
+  legal_entity_name: string | null;
+  legal_entity_code: string | null;
+  sub_department_name: string | null;
   created_by_name: string;
   created_by_email: string;
   completed_reviews: number;
   total_reviewers: number;
   completed_approvals: number;
+  total_trainees: number;
+  completed_trainees: number;
+  obsolete_approver_name: string | null;
+  parent_document_number: string | null;
 }
 
 export interface UserWithRoles extends Profile {
@@ -268,6 +334,7 @@ export interface DepartmentFormData {
   code: string;
   description: string;
   is_active: boolean;
+  legal_entity_id: string;
 }
 
 export interface DocumentFormData {

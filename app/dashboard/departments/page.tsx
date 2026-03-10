@@ -1,14 +1,13 @@
 import { Suspense } from 'react'
-import { getDepartments } from './actions'
+import { getDepartments, getLegalEntitiesForDepts, getSubDepartments } from './actions'
 import DepartmentsClient from './DepartmentsClient'
-import { Building2, Loader2 } from 'lucide-react'
+import { Building2 } from 'lucide-react'
 
 export const metadata = {
   title: 'Departments | Document Controller',
-  description: 'Manage company departments',
+  description: 'Manage company departments and sub-departments',
 }
 
-// Loading skeleton component
 function DepartmentsLoadingSkeleton() {
   return (
     <div className="animate-pulse">
@@ -40,39 +39,46 @@ function DepartmentsLoadingSkeleton() {
   )
 }
 
-// Server component to fetch data
 async function DepartmentsList() {
-  const result = await getDepartments(false)
-  
-  if (!result.success) {
+  const [deptsResult, leResult, subResult] = await Promise.all([
+    getDepartments(false),
+    getLegalEntitiesForDepts(),
+    getSubDepartments(),
+  ])
+
+  if (!deptsResult.success) {
     return (
       <div className="card p-8 text-center">
         <div className="mx-auto h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
           <Building2 className="h-6 w-6 text-red-600" />
         </div>
         <h3 className="text-lg font-semibold text-slate-800 mb-2">Error Loading Departments</h3>
-        <p className="text-slate-500">{result.error}</p>
+        <p className="text-slate-500">{deptsResult.error}</p>
       </div>
     )
   }
 
-  return <DepartmentsClient initialDepartments={result.data || []} />
+  return (
+    <DepartmentsClient
+      initialDepartments={deptsResult.data || []}
+      initialLegalEntities={leResult.data || []}
+      initialSubDepartments={(subResult.data || []) as any}
+    />
+  )
 }
 
 export default function DepartmentsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Departments</h1>
           <p className="text-slate-500 mt-1">
-            Manage company departments for document organization
+            Manage company departments and sub-departments
           </p>
         </div>
       </div>
 
-      {/* Departments List */}
       <Suspense fallback={<DepartmentsLoadingSkeleton />}>
         <DepartmentsList />
       </Suspense>

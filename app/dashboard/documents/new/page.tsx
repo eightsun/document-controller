@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import DocumentForm from './DocumentForm'
-import { getFormOptions } from './actions'
+import { getFormOptions, getDocumentForRevise } from './actions'
 
 export const metadata = {
   title: 'New Document | Document Controller',
@@ -25,16 +25,19 @@ function LoadingSkeleton() {
   )
 }
 
-async function NewDocumentWrapper() {
+async function NewDocumentWrapper({ fromId }: { fromId?: string }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  
+
   if (!user) {
     redirect('/login')
   }
 
-  const result = await getFormOptions()
-  
+  const [result, reviseFromDoc] = await Promise.all([
+    getFormOptions(),
+    fromId ? getDocumentForRevise(fromId) : Promise.resolve(null),
+  ])
+
   if (!result.success || !result.data) {
     return (
       <div className="text-center py-12">
@@ -48,15 +51,18 @@ async function NewDocumentWrapper() {
       documentTypes={result.data.documentTypes}
       departments={result.data.departments}
       users={result.data.users}
+      legalEntities={result.data.legalEntities}
+      subDepartments={result.data.subDepartments}
       currentUserId={user.id}
+      reviseFromDoc={reviseFromDoc || undefined}
     />
   )
 }
 
-export default function NewDocumentPage() {
+export default function NewDocumentPage({ searchParams }: { searchParams: { from?: string } }) {
   return (
     <Suspense fallback={<LoadingSkeleton />}>
-      <NewDocumentWrapper />
+      <NewDocumentWrapper fromId={searchParams.from} />
     </Suspense>
   )
 }

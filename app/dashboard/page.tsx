@@ -14,7 +14,8 @@ import {
   Ban,
   Lock,
   TrendingUp,
-  PieChart
+  PieChart,
+  GraduationCap
 } from 'lucide-react'
 import DashboardCharts from './DashboardCharts'
 
@@ -125,7 +126,7 @@ export default async function DashboardPage() {
     allDocs.forEach((d: { status: string }) => {
       statusMap[d.status] = (statusMap[d.status] || 0) + 1
     })
-    const statusOrder = ['Initiation', 'Review', 'Waiting Approval', 'Approved', 'Closed', 'Rejected', 'Cancel']
+    const statusOrder = ['Initiation', 'Review', 'Waiting Approval', 'Approved', 'Training', 'Closed', 'Rejected', 'Cancel']
     statusCounts = statusOrder.map(status => ({ status, count: statusMap[status] || 0 })).filter(s => s.count > 0)
   }
 
@@ -248,6 +249,7 @@ export default async function DashboardPage() {
   const totalDocs = statusCounts.reduce((sum, s) => sum + s.count, 0)
   const draftDocs = getStatusCount('Initiation') + getStatusCount('Review') + getStatusCount('Waiting Approval')
   const approvedDocs = getStatusCount('Approved')
+  const trainingDocs = getStatusCount('Training')
   const closedDocs = getStatusCount('Closed')
 
   // Calculate valid and expired from department stats
@@ -264,6 +266,7 @@ export default async function DashboardPage() {
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       'Approved': 'bg-emerald-100 text-emerald-700',
+      'Training': 'bg-purple-100 text-purple-700',
       'Waiting Approval': 'bg-orange-100 text-orange-700',
       'Review': 'bg-blue-100 text-blue-700',
       'Initiation': 'bg-amber-100 text-amber-700',
@@ -280,6 +283,7 @@ export default async function DashboardPage() {
       'Review': ClipboardCheck,
       'Waiting Approval': Clock,
       'Approved': CheckCircle,
+      'Training': GraduationCap,
       'Closed': Lock,
       'Rejected': XCircle,
       'Cancel': Ban,
@@ -296,6 +300,7 @@ export default async function DashboardPage() {
       'Review': '#3b82f6',
       'Waiting Approval': '#f97316',
       'Approved': '#10b981',
+      'Training': '#a855f7',
       'Closed': '#6366f1',
       'Rejected': '#ef4444',
       'Cancel': '#64748b',
@@ -315,7 +320,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
         <Link href="/dashboard/documents" className="card p-4 card-hover text-center">
           <FileText className="h-8 w-8 text-blue-500 mx-auto mb-2" />
           <p className="text-2xl font-bold text-slate-800">{totalDocs}</p>
@@ -335,6 +340,11 @@ export default async function DashboardPage() {
           <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
           <p className="text-2xl font-bold text-slate-800">{totalExpired}</p>
           <p className="text-xs text-slate-500">Expired</p>
+        </Link>
+        <Link href="/dashboard/documents?status=Training" className="card p-4 card-hover text-center">
+          <GraduationCap className="h-8 w-8 text-purple-500 mx-auto mb-2" />
+          <p className="text-2xl font-bold text-slate-800">{trainingDocs}</p>
+          <p className="text-xs text-slate-500">Training</p>
         </Link>
         <div className="card p-4 text-center">
           <Lock className="h-8 w-8 text-indigo-500 mx-auto mb-2" />

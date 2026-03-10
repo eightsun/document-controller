@@ -153,6 +153,7 @@ export default function DocumentsClient({
       'Review': 'bg-blue-100 text-blue-700',
       'Waiting Approval': 'bg-orange-100 text-orange-700',
       'Approved': 'bg-emerald-100 text-emerald-700',
+      'Training': 'bg-purple-100 text-purple-700',
       'Rejected': 'bg-red-100 text-red-700',
       'Closed': 'bg-slate-100 text-slate-700',
       'Cancel': 'bg-slate-100 text-slate-500',
@@ -340,6 +341,7 @@ export default function DocumentsClient({
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Type</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Department</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ver.</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Created By</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Target Date</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Expiry</th>
@@ -348,7 +350,7 @@ export default function DocumentsClient({
             <tbody className="divide-y divide-slate-200">
               {documents.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <FileText className="h-12 w-12 text-slate-300 mx-auto mb-4" />
                     <p className="text-slate-500 font-medium">No documents found</p>
                     <p className="text-sm text-slate-400 mt-1">
@@ -408,6 +410,11 @@ export default function DocumentsClient({
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600 font-mono">
+                        v{doc.version}
+                      </span>
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-1">

@@ -122,6 +122,32 @@ async function getDocumentWithDetails(id: string) {
     })
   }
   
+  // Get training records
+  const { data: rawTraining } = await supabase
+    .from('document_training')
+    .select('id, user_id, department_id, acknowledged, acknowledged_at, created_at')
+    .eq('document_id', id)
+    .order('acknowledged', { ascending: true })
+
+  const training = []
+  for (const t of (rawTraining || [])) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .eq('id', t.user_id)
+      .single()
+
+    training.push({
+      id: t.id as string,
+      user_id: t.user_id as string,
+      department_id: t.department_id as string | null,
+      acknowledged: (t.acknowledged || false) as boolean,
+      acknowledged_at: t.acknowledged_at as string | null,
+      created_at: t.created_at as string,
+      profiles: profile,
+    })
+  }
+
   // Get affected departments
   const { data: affectedRaw } = await supabase
     .from('affected_departments')
@@ -182,6 +208,9 @@ async function getDocumentWithDetails(id: string) {
       document_type_name: document.document_type_name as string | null,
       document_type_code: document.document_type_code as string | null,
       department_name: document.department_name as string | null,
+      legal_entity_name: (document as any).legal_entity_name as string | null,
+      legal_entity_code: (document as any).legal_entity_code as string | null,
+      sub_department_name: (document as any).sub_department_name as string | null,
       created_by_name: document.created_by_name as string | null,
       created_by: document.created_by as string | null,
       published_at: document.published_at as string | null,
@@ -189,12 +218,23 @@ async function getDocumentWithDetails(id: string) {
       effective_date: (document.effective_date as string | null) || null,
       rejection_reason: (document.rejection_reason as string | null) || null,
       closed_at: (document.closed_at as string | null) || null,
+      training_started_at: (document.training_started_at as string | null) || null,
       cancellation_reason: (document.cancellation_reason as string | null) || null,
       cancelled_at: (document.cancelled_at as string | null) || null,
+      parent_document_id: (document as any).parent_document_id as string | null,
+      parent_document_number: (document as any).parent_document_number as string | null,
+      obsolete_reason: (document as any).obsolete_reason as string | null,
+      obsolete_requested_at: (document as any).obsolete_requested_at as string | null,
+      obsolete_approver_id: (document as any).obsolete_approver_id as string | null,
+      obsolete_approver_name: (document as any).obsolete_approver_name as string | null,
+      obsolete_approved_at: (document as any).obsolete_approved_at as string | null,
+      obsolete_rejected_at: (document as any).obsolete_rejected_at as string | null,
+      published_link: (document as any).published_link as string | null,
     },
     assignments,
     reviews,
     approvals,
+    training,
     affectedDepartments,
     timeline: (timeline || []).map(t => ({
       id: t.id as string,

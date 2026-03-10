@@ -2,7 +2,14 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { ActionResponse, Department, DepartmentFormData } from '@/types/database'
+import type { ActionResponse, Department, DepartmentFormData, SubDepartment } from '@/types/database'
+
+interface SubDepartmentFormData {
+  name: string
+  code: string
+  department_id: string
+  is_active: boolean
+}
 
 // ============================================================================
 // Helper: Check if user has Admin or BPM role
@@ -58,26 +65,45 @@ async function checkAdminOrBPMRole(): Promise<{ allowed: boolean; userId: string
 export async function getDepartments(includeDeleted = false): Promise<ActionResponse<Department[]>> {
   try {
     const supabase = await createClient()
-    
+
     let query = supabase
       .from('departments')
       .select('*')
       .order('name', { ascending: true })
-    
+
     if (!includeDeleted) {
       query = query.is('deleted_at', null)
     }
-    
+
     const { data, error } = await query
-    
+
     if (error) {
       console.error('Error fetching departments:', error)
       return { success: false, error: error.message }
     }
-    
+
     return { success: true, data: data as Department[] }
   } catch (error) {
     console.error('Unexpected error:', error)
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+// ============================================================================
+// Get legal entities (for use in the departments page dropdowns)
+// ============================================================================
+export async function getLegalEntitiesForDepts(): Promise<ActionResponse<{ id: string; name: string; code: string }[]>> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('legal_entities')
+      .select('id, name, code')
+      .is('deleted_at', null)
+      .eq('is_active', true)
+      .order('name')
+    if (error) return { success: false, error: error.message }
+    return { success: true, data: data || [] }
+  } catch {
     return { success: false, error: 'An unexpected error occurred' }
   }
 }
@@ -144,6 +170,7 @@ export async function createDepartment(formData: DepartmentFormData): Promise<Ac
         code: formData.code?.trim().toUpperCase() || null,
         description: formData.description?.trim() || null,
         is_active: formData.is_active ?? true,
+        legal_entity_id: formData.legal_entity_id || null,
       })
       .select()
       .single()
@@ -199,6 +226,7 @@ export async function updateDepartment(id: string, formData: DepartmentFormData)
         code: formData.code?.trim().toUpperCase() || null,
         description: formData.description?.trim() || null,
         is_active: formData.is_active ?? true,
+        legal_entity_id: formData.legal_entity_id || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -360,13 +388,192 @@ export async function toggleDepartmentStatus(id: string): Promise<ActionResponse
     }
     
     revalidatePath('/dashboard/departments')
-    return { 
-      success: true, 
-      data: data as Department, 
-      message: `Department ${data.is_active ? 'activated' : 'deactivated'} successfully` 
+    return {
+      success: true,
+      data: data as Department,
+      message: `Department ${data.is_active ? 'activated' : 'deactivated'} successfully`
     }
   } catch (error) {
     console.error('Unexpected error:', error)
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+// ============================================================================
+// SUB-DEPARTMENTS
+// ============================================================================
+
+export async function getSubDepartments(): Promise<ActionResponse<(SubDepartment & { department_name: string | null })[]>> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('sub_departments')
+      .select('*, departments(name)')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+    if (error) return { success: false, error: error.message }
+    const mapped = (data || []).map((row: SubDepartment & { departments: { name: string } | null }) => ({
+      ...row,
+      department_name: row.departments?.name ?? null,
+    }))
+    return { success: true, data: mapped }
+  } catch {
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+export async function createSubDepartment(formData: SubDepartmentFormData): Promise<ActionResponse<SubDepartment>> {
+  try {
+    const { allowed, error: permError } = await checkAdminOrBPMRole()
+    if (!allowed) return { success: false, error: permError || 'Access denied' }
+    if (!formData.name.trim()) return { success: false, error: 'Sub-department name is required' }
+    if (!formData.department_id) return { success: false, error: 'Parent department is required' }
+
+    const supabase = await createClient()
+
+    // Check duplicate code within same department
+    if (formData.code?.trim()) {
+      const { data: existing } = await supabase
+        .from('sub_departments')
+        .select('id')
+        .eq('department_id', formData.department_id)
+        .eq('code', formData.code.trim().toUpperCase())
+        .is('deleted_at', null)
+        .limit(1)
+      if (existing && existing.length > 0) {
+        return { success: false, error: 'A sub-department with this code already exists in the selected department' }
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('sub_departments')
+      .insert({
+        name: formData.name.trim(),
+        code: formData.code?.trim().toUpperCase() || null,
+        department_id: formData.department_id,
+        is_active: formData.is_active ?? true,
+      })
+      .select()
+      .single()
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/dashboard/departments')
+    return { success: true, data: data as SubDepartment, message: 'Sub-department created successfully' }
+  } catch {
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+export async function updateSubDepartment(id: string, formData: SubDepartmentFormData): Promise<ActionResponse<SubDepartment>> {
+  try {
+    const { allowed, error: permError } = await checkAdminOrBPMRole()
+    if (!allowed) return { success: false, error: permError || 'Access denied' }
+    if (!formData.name.trim()) return { success: false, error: 'Sub-department name is required' }
+    if (!formData.department_id) return { success: false, error: 'Parent department is required' }
+
+    const supabase = await createClient()
+
+    if (formData.code?.trim()) {
+      const { data: existing } = await supabase
+        .from('sub_departments')
+        .select('id')
+        .eq('department_id', formData.department_id)
+        .eq('code', formData.code.trim().toUpperCase())
+        .neq('id', id)
+        .is('deleted_at', null)
+        .limit(1)
+      if (existing && existing.length > 0) {
+        return { success: false, error: 'A sub-department with this code already exists in the selected department' }
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('sub_departments')
+      .update({
+        name: formData.name.trim(),
+        code: formData.code?.trim().toUpperCase() || null,
+        department_id: formData.department_id,
+        is_active: formData.is_active ?? true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/dashboard/departments')
+    return { success: true, data: data as SubDepartment, message: 'Sub-department updated successfully' }
+  } catch {
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+export async function deleteSubDepartment(id: string): Promise<ActionResponse> {
+  try {
+    const { allowed, error: permError } = await checkAdminOrBPMRole()
+    if (!allowed) return { success: false, error: permError || 'Access denied' }
+
+    const supabase = await createClient()
+
+    // Block if documents reference this sub-department
+    const { data: docs } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('sub_department_id', id)
+      .eq('is_deleted', false)
+      .limit(1)
+
+    if (docs && docs.length > 0) {
+      return { success: false, error: 'Cannot delete: Documents are associated with this sub-department.' }
+    }
+
+    const { error } = await supabase
+      .from('sub_departments')
+      .update({ deleted_at: new Date().toISOString(), is_active: false })
+      .eq('id', id)
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/dashboard/departments')
+    return { success: true, message: 'Sub-department deleted successfully' }
+  } catch {
+    return { success: false, error: 'An unexpected error occurred' }
+  }
+}
+
+export async function toggleSubDepartmentStatus(id: string): Promise<ActionResponse<SubDepartment>> {
+  try {
+    const { allowed, error: permError } = await checkAdminOrBPMRole()
+    if (!allowed) return { success: false, error: permError || 'Access denied' }
+
+    const supabase = await createClient()
+
+    const { data: current, error: fetchError } = await supabase
+      .from('sub_departments')
+      .select('is_active')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !current) return { success: false, error: 'Sub-department not found' }
+
+    const { data, error } = await supabase
+      .from('sub_departments')
+      .update({ is_active: !current.is_active, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/dashboard/departments')
+    return {
+      success: true,
+      data: data as SubDepartment,
+      message: `Sub-department ${data.is_active ? 'activated' : 'deactivated'} successfully`,
+    }
+  } catch {
     return { success: false, error: 'An unexpected error occurred' }
   }
 }
